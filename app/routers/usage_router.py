@@ -61,8 +61,10 @@ async def get_current_session_data(db) -> dict:
 
     pricing_rows = await get_all_pricing(db)
     threshold_str = await get_setting(db, "session_cost_warning_usd", "5.0")
+    token_threshold_str = await get_setting(db, "session_token_warning", "100000")
 
     threshold = float(threshold_str)
+    token_threshold = int(token_threshold_str)
     pricing_map = {r["model"]: dict(r) for r in pricing_rows}
 
     # Aggregate across models
@@ -112,6 +114,9 @@ async def get_current_session_data(db) -> dict:
         "duration_minutes": duration_minutes,
         "warning": total_cost >= threshold,
         "warning_threshold_usd": threshold,
+        "total_tokens": total_input + total_output + total_cache_read + total_cache_write,
+        "token_warning": (total_input + total_output + total_cache_read + total_cache_write) >= token_threshold,
+        "warning_threshold_tokens": token_threshold,
     }
 
 

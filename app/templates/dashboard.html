@@ -677,7 +677,14 @@
 
         <!-- Alert Settings -->
         <div class="alert-settings-row">
-          <span class="alert-settings-label">🔔 Session cost warning threshold:</span>
+          <span class="alert-settings-label">🔔 Session context threshold:</span>
+          <input type="number" class="alert-threshold-input" id="token-threshold" step="10000" min="0" value="100000" />
+          <span class="alert-settings-label">tokens</span>
+          <button class="alert-save-btn" onclick="saveTokenThreshold()">Save</button>
+          <span class="alert-save-ok" id="token-save-ok">✓ Saved</span>
+        </div>
+        <div class="alert-settings-row">
+          <span class="alert-settings-label">💰 Session cost warning threshold:</span>
           <input type="number" class="alert-threshold-input" id="alert-threshold" step="0.5" min="0" value="5.00" />
           <span class="alert-settings-label">USD</span>
           <button class="alert-save-btn" onclick="saveAlertThreshold()">Save</button>
@@ -1098,14 +1105,16 @@ async function loadCurrentSession() {
 
     const threshold = data.warning_threshold_usd || 5.0;
     const cost = data.estimated_cost_usd || 0;
-    const ratio = threshold > 0 ? Math.min(cost / threshold, 2) : 0;  // cap at 2×
-    const pct = Math.min(ratio * 100, 100);
-    const fillClass = cost >= threshold ? 'over' : (pct > 70 ? 'warn' : '');
-    const costClass = warning ? 'session-cost warn' : 'session-cost';
+    const tokenThreshold = data.warning_threshold_tokens || 100000;
+    const tokenWarning = data.token_warning || false;
+    const totalTokens = data.total_tokens || 0;
+    const tokenRatio = tokenThreshold > 0 ? Math.min(totalTokens / tokenThreshold, 2) : 0;
+    const pct = Math.min(tokenRatio * 100, 100);
+    const fillClass = tokenWarning ? 'over' : (pct > 70 ? 'warn' : '');
+    const costClass = tokenWarning ? 'session-cost warn' : 'session-cost';
 
     const models = (data.models_used || []).join(', ') || '—';
     const dur = fmtDuration(data.duration_minutes || 0);
-    const totalTokens = (data.input_tokens||0) + (data.output_tokens||0) + (data.cache_read_tokens||0) + (data.cache_write_tokens||0);
 
     card.innerHTML = `
       <div class="session-header">
@@ -1122,7 +1131,7 @@ async function loadCurrentSession() {
         <span class="${costClass}">${fmtK(totalTokens)} tokens</span>
         <span class="sep">|</span>
         <span style="color:var(--text-dim);font-size:12px">${fmtCost(cost)}</span>
-        ${warning ? '<span class="session-warning-badge" style="display:inline">⚠️ Over threshold</span>' : ''}
+        ${tokenWarning ? '<span class="session-warning-badge" style="display:inline">⚠️ Context large</span>' : ''}
       </div>
       <div class="session-tokens">
         In: ${fmtK(data.input_tokens)}&nbsp;&nbsp;
@@ -1134,7 +1143,7 @@ async function loadCurrentSession() {
         <div class="session-progress-bar">
           <div class="session-progress-fill ${fillClass}" style="width:${pct.toFixed(1)}%"></div>
         </div>
-        <span class="session-progress-label">${fmtCost(cost)} / ${fmtCost(threshold)} threshold</span>
+        <span class="session-progress-label">${fmtK(totalTokens)} / ${fmtK(tokenThreshold)} token threshold</span>
       </div>`;
   } catch (e) {
     card.innerHTML = `<div class="session-inactive" style="color:var(--red)">Error loading session: ${e.message}</div>`;
@@ -1143,6 +1152,24 @@ async function loadCurrentSession() {
 
 // Auto-refresh every 60 seconds
 setInterval(loadCurrentSession, 60_000);
+
+/* ── Token Threshold Save ───────────────────────────────────────────────── */
+async function saveTokenThreshold() {
+  const val = parseInt(document.getElementById('token-threshold').value, 10);
+  if (isNaN(val) || val < 0) { showToast('Invalid threshold value', 'err'); return; }
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token_warning: val }),
+    });
+    const okEl = document.getElementById('token-save-ok');
+    if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
+    await loadCurrentSession();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'err');
+  }
+}
 
 /* ── Alert Threshold Save ───────────────────────────────────────────────── */
 async function saveAlertThreshold() {
@@ -1169,6 +1196,10 @@ async function loadAlertThreshold() {
     const threshold = data.session_cost_warning_usd;
     if (threshold !== undefined) {
       document.getElementById('alert-threshold').value = parseFloat(threshold).toFixed(2);
+    }
+    const tokenThresh = data.session_token_warning;
+    if (tokenThresh !== undefined) {
+      document.getElementById('token-threshold').value = parseInt(tokenThresh, 10);
     }
     // Load Telegram settings
     const enabled = data.alert_telegram_enabled === 'true';
