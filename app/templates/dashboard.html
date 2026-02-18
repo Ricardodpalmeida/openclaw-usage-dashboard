@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenClaw Usage Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --bg-card:   #161b22;
+      --bg-hover:  #1c2128;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --text-dim:  #8b949e;
+      --accent:    #58a6ff;
+      --green:     #3fb950;
+      --yellow:    #d29922;
+      --red:       #f85149;
+      --purple:    #bc8cff;
+      --orange:    #e3b341;
+      --mono:      "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    header h1 span { color: var(--accent); }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    #last-sync {
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    button#sync-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    button#sync-btn:hover   { opacity: .85; }
+    button#sync-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    section { margin-bottom: 28px; }
+    h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    /* ── Summary Cards ───────────────────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+    }
+    .card-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-family: var(--mono);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* ── Charts ──────────────────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+    }
+    .chart-card h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: var(--text);
+    }
+    .chart-wrap { position: relative; height: 240px; }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--bg-hover); }
+    td.text { font-family: inherit; font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+    }
+    .badge-ok     { background: rgba(63,185,80,.15); color: var(--green); }
+    .badge-error  { background: rgba(248,81,73,.15);  color: var(--red); }
+    .badge-skip   { background: rgba(139,148,158,.12); color: var(--text-dim); }
+    .badge-cfg    { background: rgba(88,166,255,.12); color: var(--accent); }
+    .badge-nocfg  { background: rgba(139,148,158,.12); color: var(--text-dim); }
+
+    /* ── Provider grid ───────────────────────────────────────────────────── */
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .provider-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .provider-name { font-size: 13px; font-weight: 500; }
+    .provider-method { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+    /* ── Toast ───────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all .25s;
+      pointer-events: none;
+      z-index: 999;
+      max-width: 340px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.ok   { border-color: var(--green); color: var(--green); }
+    #toast.err  { border-color: var(--red);   color: var(--red); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>OpenClaw <span>Usage Dashboard</span></h1>
+  <div class="header-right">
+    <span id="last-sync">Last sync: —</span>
+    <button id="sync-btn" onclick="triggerSync()">↻ Sync Now</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- Summary Cards -->
+  <section>
+    <h2>Overview</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">Total Tokens — All Time</div>
+        <div class="card-value" id="c-total-all">—</div>
+        <div class="card-sub" id="c-total-req">— requests</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Tokens — Last 7 Days</div>
+        <div class="card-value" id="c-total-7d">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Tokens — Last 30 Days</div>
+        <div class="card-value" id="c-total-30d">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Est. Cost — Last 30 Days</div>
+        <div class="card-value" id="c-cost-30d">—</div>
+        <div class="card-sub">Anthropic only (log parsing has no billing data)</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Active Providers</div>
+        <div class="card-value" id="c-providers">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Charts -->
+  <section>
+    <h2>Charts — Last 30 Days</h2>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>Top Models by Token Volume</h3>
+        <div class="chart-wrap"><canvas id="chart-models"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Daily Token Usage</h3>
+        <div class="chart-wrap"><canvas id="chart-timeline"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Model breakdown table -->
+  <section>
+    <h2>Breakdown by Model</h2>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Total Tokens</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Requests</th>
+            <th>Est. Cost (USD)</th>
+          </tr>
+        </thead>
+        <tbody id="model-table-body">
+          <tr><td colspan="7" class="text" style="color:var(--text-dim);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Provider status -->
+  <section>
+    <h2>Provider Status</h2>
+    <div class="provider-grid" id="provider-grid">Loading…</div>
+  </section>
+
+  <!-- Sync log -->
+  <section>
+    <h2>Sync Log</h2>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Provider</th>
+            <th>Status</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="sync-log-body">
+          <tr><td colspan="4" class="text" style="color:var(--text-dim);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+const fmt = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const fmtK = n => {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+};
+const fmtCost = v => v == null ? '—' : '$' + Number(v).toFixed(4);
+
+const PROVIDER_COLOURS = {
+  anthropic: '#e8912d',
+  google:    '#4285f4',
+  moonshot:  '#bc8cff',
+};
+const modelColour = model => {
+  if (model.startsWith('claude'))   return PROVIDER_COLOURS.anthropic;
+  if (model.startsWith('gemini'))   return PROVIDER_COLOURS.google;
+  if (model.startsWith('kimi') || model.startsWith('moonshot')) return PROVIDER_COLOURS.moonshot;
+  return '#58a6ff';
+};
+
+/* ── Chart defaults ─────────────────────────────────────────────────────── */
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#30363d';
+Chart.defaults.font.family = 'inherit';
+
+let chartModels, chartTimeline;
+
+function buildModelsChart(data) {
+  const top = data.slice(0, 10);
+  const labels = top.map(d => d.model);
+  const values = top.map(d => d.total_tokens);
+  const colours = labels.map(modelColour);
+
+  if (chartModels) chartModels.destroy();
+  chartModels = new Chart(document.getElementById('chart-models'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Total Tokens',
+        data: values,
+        backgroundColor: colours.map(c => c + '99'),
+        borderColor: colours,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxRotation: 30, font: { size: 11 } } },
+        y: { ticks: { callback: v => fmtK(v) } }
+      }
+    }
+  });
+}
+
+function buildTimelineChart(data) {
+  if (chartTimeline) chartTimeline.destroy();
+  chartTimeline = new Chart(document.getElementById('chart-timeline'), {
+    type: 'line',
+    data: {
+      labels: data.map(d => d.date.slice(5)),  // MM-DD
+      datasets: [{
+        label: 'Total Tokens',
+        data: data.map(d => d.total_tokens),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,.1)',
+        borderWidth: 2,
+        pointRadius: 3,
+        fill: true,
+        tension: .3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 10, font: { size: 11 } } },
+        y: { ticks: { callback: v => fmtK(v) } }
+      }
+    }
+  });
+}
+
+/* ── Data loaders ───────────────────────────────────────────────────────── */
+async function loadSummary() {
+  const r = await fetch('/api/usage/summary').then(r => r.json());
+  document.getElementById('c-total-all').textContent  = fmtK(r.total_tokens_all_time);
+  document.getElementById('c-total-req').textContent  = fmt(r.total_requests_all_time) + ' requests';
+  document.getElementById('c-total-7d').textContent   = fmtK(r.total_tokens_last_7d);
+  document.getElementById('c-total-30d').textContent  = fmtK(r.total_tokens_last_30d);
+  document.getElementById('c-cost-30d').textContent   = fmtCost(r.estimated_cost_last_30d);
+  document.getElementById('c-providers').textContent  = r.active_providers;
+}
+
+async function loadModelTable() {
+  const data = await fetch('/api/usage/by-model').then(r => r.json());
+  const tbody = document.getElementById('model-table-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text" style="color:var(--text-dim);padding:20px">No data yet — run a sync.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(d => `
+    <tr>
+      <td class="text">${d.provider}</td>
+      <td class="text">${d.model}</td>
+      <td>${fmt(d.total_tokens)}</td>
+      <td>${fmt(d.input_tokens)}</td>
+      <td>${fmt(d.output_tokens)}</td>
+      <td>${fmt(d.request_count)}</td>
+      <td>${fmtCost(d.estimated_cost_usd)}</td>
+    </tr>`).join('');
+  buildModelsChart(data);
+}
+
+async function loadTimeline() {
+  const data = await fetch('/api/usage/timeline').then(r => r.json());
+  if (data.length) buildTimelineChart(data);
+}
+
+async function loadProviders() {
+  const data = await fetch('/api/providers').then(r => r.json());
+  const grid = document.getElementById('provider-grid');
+  grid.innerHTML = data.map(p => `
+    <div class="provider-card">
+      <div>
+        <div class="provider-name">${p.display_name}</div>
+        <div class="provider-method">${p.method}</div>
+      </div>
+      <span class="badge ${p.is_configured ? 'badge-cfg' : 'badge-nocfg'}">
+        ${p.is_configured ? 'Configured' : 'Not configured'}
+      </span>
+    </div>`).join('');
+}
+
+async function loadSyncLog() {
+  const data = await fetch('/api/sync/log').then(r => r.json());
+  const tbody = document.getElementById('sync-log-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text" style="color:var(--text-dim);padding:20px">No sync events yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(e => {
+    const badgeClass = e.status === 'ok' ? 'badge-ok' : e.status === 'error' ? 'badge-error' : 'badge-skip';
+    return `
+    <tr>
+      <td>${e.synced_at}</td>
+      <td class="text">${e.provider}</td>
+      <td><span class="badge ${badgeClass}">${e.status}</span></td>
+      <td class="text">${e.message || ''}</td>
+    </tr>`;
+  }).join('');
+
+  // Last sync time from most recent entry
+  if (data[0]) {
+    document.getElementById('last-sync').textContent = 'Last sync: ' + data[0].synced_at;
+  }
+}
+
+/* ── Sync trigger ───────────────────────────────────────────────────────── */
+async function triggerSync() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  btn.textContent = '↻ Syncing…';
+  try {
+    const r = await fetch('/api/sync', { method: 'POST' }).then(r => r.json());
+    showToast(r.message, 'ok');
+    await loadAll();
+  } catch (e) {
+    showToast('Sync failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Sync Now';
+  }
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+let toastTimer;
+function showToast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+}
+
+/* ── Boot ───────────────────────────────────────────────────────────────── */
+async function loadAll() {
+  await Promise.all([
+    loadSummary(),
+    loadModelTable(),
+    loadTimeline(),
+    loadProviders(),
+    loadSyncLog(),
+  ]);
+}
+
+loadAll();
+</script>
+</body>
+</html>

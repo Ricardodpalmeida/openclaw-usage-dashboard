@@ -1,0 +1,22 @@
+services:
+  openclaw-usage:
+    build: .
+    container_name: openclaw-usage
+    restart: unless-stopped
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
+      - OPENCLAW_LOG_PATH=/openclaw-logs/openclaw.log
+      - SYNC_INTERVAL_HOURS=6
+    volumes:
+      - ./data:/app/data                      # SQLite DB persistence
+      - ~/.openclaw/logs:/openclaw-logs:ro    # Read-only log access
+    ports:
+      - "8001:8000"
+    networks:
+      - pacheco-net
+
+networks:
+  pacheco-net:
+    external: true
