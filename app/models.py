@@ -6,41 +6,51 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
+class PeriodStats(BaseModel):
+    real_tokens: int
+    requests: int
+
+
 class UsageSummary(BaseModel):
-    total_tokens_all_time: int
-    total_tokens_last_30d: int
-    total_tokens_last_7d: int
-    estimated_cost_last_30d: float
-    active_providers: int
-    total_requests_all_time: int
+    total_real_tokens: int
+    total_cache_tokens: int
+    total_requests: int
+    estimated_cost_usd: float
+    by_period: dict  # keys: today, last_7d, last_30d → PeriodStats-like dicts
 
 
 class UsageByModel(BaseModel):
     provider: str
     model: str
-    total_tokens: int
+    real_tokens: int
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int
     request_count: int
     estimated_cost_usd: float
 
 
 class DailyUsage(BaseModel):
     date: str
-    total_tokens: int
-    input_tokens: int
-    output_tokens: int
-    request_count: int
+    real_tokens: int
+    requests: int
 
 
-class UsageByProvider(BaseModel):
-    provider: str
-    display_name: str
-    total_tokens: int
-    input_tokens: int
-    output_tokens: int
-    request_count: int
-    estimated_cost_usd: float
+class HourlyUsage(BaseModel):
+    hour: int
+    real_tokens: int
+    requests: int
+
+
+class WeeklyUsage(BaseModel):
+    week_start: str
+    week_end: str
+    days: List[DailyUsage]
+
+
+class HourlyBreakdown(BaseModel):
+    date: str
+    hours: List[HourlyUsage]
 
 
 class ProviderStatus(BaseModel):

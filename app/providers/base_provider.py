@@ -19,9 +19,11 @@ class UsageRecord:
     provider: str
     model: str
     date: str               # ISO date YYYY-MM-DD
+    hour: int               # 0-23 UTC
     input_tokens: int
     output_tokens: int
-    total_tokens: int
+    cache_read_tokens: int
+    real_tokens: int        # input + output (billable)
     request_count: int
     estimated_cost_usd: float
 
@@ -39,7 +41,7 @@ class BaseProvider(ABC):
             end_date:   ISO date string YYYY-MM-DD (inclusive)
 
         Returns:
-            List of UsageRecord objects, one per (model, date) combination.
+            List of UsageRecord objects, one per (model, date, hour) combination.
         """
         pass
 

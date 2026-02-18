@@ -6,7 +6,7 @@ Data source: ~/.openclaw/agents/main/sessions/*.jsonl
 Each session file contains one JSON object per line. Assistant messages
 include a `usage` field with per-call token counts and cost. This module
 reads all session files, extracts usage from assistant messages, and
-aggregates by (provider, model, date).
+aggregates by (provider, model, date, hour).
 
 Record format (assistant message with usage):
 {
@@ -54,17 +54,19 @@ def _get_sessions_path() -> Path:
     return Path(raw).expanduser().resolve()
 
 
-def _parse_date(timestamp_str: str) -> str:
-    """Parse ISO timestamp string to YYYY-MM-DD date string."""
+def _parse_date_hour(timestamp_str: str) -> Tuple[str, int]:
+    """Parse ISO timestamp string to (YYYY-MM-DD, hour) tuple in UTC."""
     try:
         dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+        dt_utc = dt.astimezone(timezone.utc)
+        return dt_utc.strftime("%Y-%m-%d"), dt_utc.hour
     except Exception:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        now = datetime.now(timezone.utc)
+        return now.strftime("%Y-%m-%d"), now.hour
 
 
-# Key: (provider, model, date)
-AggKey = Tuple[str, str, str]
+# Key: (provider, model, date, hour)
+AggKey = Tuple[str, str, str, int]
 
 
 def parse_sessions(
@@ -82,8 +84,8 @@ def parse_sessions(
         end_date:   Optional ISO date string YYYY-MM-DD (inclusive).
 
     Returns:
-        List of dicts with keys: provider, model, date, input_tokens,
-        output_tokens, cache_read_tokens, total_tokens, request_count,
+        List of dicts with keys: provider, model, date, hour, input_tokens,
+        output_tokens, cache_read_tokens, real_tokens, request_count,
         estimated_cost_usd.
     """
     sessions_path = _get_sessions_path()
@@ -97,13 +99,13 @@ def parse_sessions(
         logger.info("No session files found in %s", sessions_path)
         return []
 
-    # Accumulator: (provider, model, date) -> dict of aggregated values
+    # Accumulator: (provider, model, date, hour) -> dict of aggregated values
     agg: Dict[AggKey, Dict] = defaultdict(
         lambda: {
             "input_tokens": 0,
             "output_tokens": 0,
             "cache_read_tokens": 0,
-            "total_tokens": 0,
+            "real_tokens": 0,
             "request_count": 0,
             "estimated_cost_usd": 0.0,
         }
@@ -137,7 +139,7 @@ def parse_sessions(
                     provider = msg.get("provider", "unknown")
                     model = msg.get("model", "unknown")
                     timestamp = record.get("timestamp", "")
-                    date = _parse_date(timestamp)
+                    date, hour = _parse_date_hour(timestamp)
 
                     # Filter by model prefix
                     if model_prefixes:
@@ -156,12 +158,17 @@ def parse_sessions(
                         v for v in cost_obj.values() if isinstance(v, (int, float))
                     )
 
-                    key: AggKey = (provider, model, date)
+                    input_t = usage.get("input", 0)
+                    output_t = usage.get("output", 0)
+                    cache_read_t = usage.get("cacheRead", 0)
+                    real_t = input_t + output_t  # billable tokens only
+
+                    key: AggKey = (provider, model, date, hour)
                     bucket = agg[key]
-                    bucket["input_tokens"] += usage.get("input", 0)
-                    bucket["output_tokens"] += usage.get("output", 0)
-                    bucket["cache_read_tokens"] += usage.get("cacheRead", 0)
-                    bucket["total_tokens"] += usage.get("totalTokens", 0)
+                    bucket["input_tokens"] += input_t
+                    bucket["output_tokens"] += output_t
+                    bucket["cache_read_tokens"] += cache_read_t
+                    bucket["real_tokens"] += real_t
                     bucket["request_count"] += 1
                     bucket["estimated_cost_usd"] += cost
                     records_found += 1
@@ -171,23 +178,24 @@ def parse_sessions(
             logger.warning("Failed to parse session file %s: %s", session_file, exc)
 
     logger.info(
-        "Parsed %d session files, found %d usage records across %d (provider, model, date) buckets",
+        "Parsed %d session files, found %d usage records across %d (provider, model, date, hour) buckets",
         files_parsed,
         records_found,
         len(agg),
     )
 
     result = []
-    for (provider, model, date), bucket in sorted(agg.items()):
+    for (provider, model, date, hour), bucket in sorted(agg.items()):
         result.append(
             {
                 "provider": provider,
                 "model": model,
                 "date": date,
+                "hour": hour,
                 "input_tokens": bucket["input_tokens"],
                 "output_tokens": bucket["output_tokens"],
                 "cache_read_tokens": bucket["cache_read_tokens"],
-                "total_tokens": bucket["total_tokens"],
+                "real_tokens": bucket["real_tokens"],
                 "request_count": bucket["request_count"],
                 "estimated_cost_usd": bucket["estimated_cost_usd"],
             }

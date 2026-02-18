@@ -52,9 +52,11 @@ class MoonshotProvider(BaseProvider):
                 provider=r["provider"],
                 model=r["model"],
                 date=r["date"],
+                hour=r["hour"],
                 input_tokens=r["input_tokens"],
                 output_tokens=r["output_tokens"],
-                total_tokens=r["total_tokens"],
+                cache_read_tokens=r["cache_read_tokens"],
+                real_tokens=r["real_tokens"],
                 request_count=r["request_count"],
                 estimated_cost_usd=r["estimated_cost_usd"],
             )
