@@ -573,6 +573,7 @@
           <button id="tt-output"      onclick="setTokenType('output')" class="active">Output</button>
           <button id="tt-cache_read"  onclick="setTokenType('cache_read')">Cache Read</button>
           <button id="tt-cache_write" onclick="setTokenType('cache_write')">Cache Write</button>
+          <button id="tt-total"       onclick="setTokenType('total')">Total</button>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="chart-weekly"></canvas></div>
@@ -753,12 +754,13 @@ const TOKEN_TYPE_LABELS = {
   output:      'Output Tokens',
   cache_read:  'Cache Read Tokens',
   cache_write: 'Cache Write Tokens',
+  total:       'Total Tokens (All)',
 };
 
 function setTokenType(type) {
   currentTokenType = type;
   // Update toggle button styles
-  ['input', 'output', 'cache_read', 'cache_write'].forEach(t => {
+  ['input', 'output', 'cache_read', 'cache_write', 'total'].forEach(t => {
     const btn = document.getElementById('tt-' + t);
     if (btn) btn.classList.toggle('active', t === type);
   });

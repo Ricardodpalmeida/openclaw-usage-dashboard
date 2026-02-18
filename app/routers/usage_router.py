@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from ..database import get_db, get_all_pricing, get_setting
 from ..log_parser import parse_single_session
@@ -116,8 +116,9 @@ async def get_current_session_data(db) -> dict:
 
 
 @session_router.get("/current")
-async def get_current_session():
+async def get_current_session(response: Response):
     """Return live cost and token stats for the currently active session."""
+    response.headers["Cache-Control"] = "no-store"
     async with get_db() as db:
         return await get_current_session_data(db)
 
@@ -190,12 +191,13 @@ async def get_summary():
     }
 
 
-_VALID_TOKEN_TYPES = {"input", "output", "cache_read", "cache_write"}
+_VALID_TOKEN_TYPES = {"input", "output", "cache_read", "cache_write", "total"}
 _TOKEN_TYPE_COLUMN = {
     "input":       "input_tokens",
     "output":      "output_tokens",
     "cache_read":  "cache_read_tokens",
     "cache_write": "cache_write_tokens",
+    "total":       "(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens)",
 }
 
 
