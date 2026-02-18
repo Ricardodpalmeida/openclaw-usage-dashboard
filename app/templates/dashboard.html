@@ -429,20 +429,20 @@
       font-weight: 600;
       display: none;
     }
-    .telegram-settings-block {
+    .whatsapp-settings-block {
       padding: 14px;
       border-top: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-    .telegram-row {
+    .whatsapp-row {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
     }
-    .telegram-text-input {
+    .whatsapp-text-input {
       background: var(--bg);
       border: 1px solid var(--border);
       color: var(--text);
@@ -454,8 +454,8 @@
       min-width: 160px;
       max-width: 340px;
     }
-    .telegram-text-input:focus { outline: none; border-color: var(--accent); }
-    .telegram-toggle {
+    .whatsapp-text-input:focus { outline: none; border-color: var(--accent); }
+    .whatsapp-toggle {
       appearance: none;
       width: 36px;
       height: 20px;
@@ -466,7 +466,7 @@
       transition: background .2s;
       flex-shrink: 0;
     }
-    .telegram-toggle::after {
+    .whatsapp-toggle::after {
       content: '';
       position: absolute;
       top: 3px; left: 3px;
@@ -475,8 +475,8 @@
       border-radius: 50%;
       transition: left .2s;
     }
-    .telegram-toggle:checked { background: var(--green); }
-    .telegram-toggle:checked::after { left: 19px; }
+    .whatsapp-toggle:checked { background: var(--green); }
+    .whatsapp-toggle:checked::after { left: 19px; }
     .alert-test-btn {
       background: rgba(63,185,80,.15);
       border: 1px solid var(--green);
@@ -683,25 +683,21 @@
           <span class="alert-save-ok" id="alert-save-ok">✓ Saved</span>
         </div>
 
-        <!-- Telegram Alert Settings -->
-        <div class="telegram-settings-block">
-          <div class="telegram-row">
-            <span class="alert-settings-label">📬 Telegram alerts:</span>
-            <input type="checkbox" class="telegram-toggle" id="tg-enabled" onchange="saveTelegramSettings()" />
-            <span class="alert-settings-label" id="tg-enabled-label">Disabled</span>
+        <!-- WhatsApp Alert Settings -->
+        <div class="whatsapp-settings-block">
+          <div class="whatsapp-row">
+            <span class="alert-settings-label">💬 WhatsApp alerts:</span>
+            <input type="checkbox" class="whatsapp-toggle" id="wa-enabled" onchange="saveWhatsAppSettings()" />
+            <span class="alert-settings-label" id="wa-enabled-label">Disabled</span>
           </div>
-          <div class="telegram-row">
-            <span class="alert-settings-label">Bot token:</span>
-            <input type="password" class="telegram-text-input" id="tg-bot-token" placeholder="Leave blank to keep current" />
+          <div class="whatsapp-row">
+            <span class="alert-settings-label">Send to:</span>
+            <input type="text" class="whatsapp-text-input" id="wa-to" placeholder="+351910298749" style="max-width:200px;" />
           </div>
-          <div class="telegram-row">
-            <span class="alert-settings-label">Chat ID:</span>
-            <input type="text" class="telegram-text-input" id="tg-chat-id" placeholder="e.g. 8539256468" style="max-width:180px;" />
-          </div>
-          <div class="telegram-row">
-            <button class="alert-save-btn" onclick="saveTelegramSettings()">Save</button>
-            <button class="alert-test-btn" onclick="testTelegramAlert()">🔔 Test Alert</button>
-            <span class="alert-save-ok" id="tg-save-ok">✓ Saved</span>
+          <div class="whatsapp-row">
+            <button class="alert-save-btn" onclick="saveWhatsAppSettings()">Save</button>
+            <button class="alert-test-btn" onclick="testWhatsAppAlert()">🔔 Test Alert</button>
+            <span class="alert-save-ok" id="wa-save-ok">✓ Saved</span>
           </div>
         </div>
       </div>
@@ -1173,30 +1169,27 @@ async function loadAlertThreshold() {
     if (threshold !== undefined) {
       document.getElementById('alert-threshold').value = parseFloat(threshold).toFixed(2);
     }
-    // Load Telegram settings
-    const enabled = data.alert_telegram_enabled === 'true';
-    const tgToggle = document.getElementById('tg-enabled');
-    const tgLabel  = document.getElementById('tg-enabled-label');
-    if (tgToggle) {
-      tgToggle.checked = enabled;
-      tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    // Load WhatsApp settings
+    const enabled = data.alert_whatsapp_enabled === 'true';
+    const waToggle = document.getElementById('wa-enabled');
+    const waLabel  = document.getElementById('wa-enabled-label');
+    if (waToggle) {
+      waToggle.checked = enabled;
+      waLabel.textContent = enabled ? 'Enabled' : 'Disabled';
     }
-    // Show masked chat ID (bot token stays hidden — password field)
-    const chatId = data.alert_telegram_chat_id || '';
-    const chatInput = document.getElementById('tg-chat-id');
-    if (chatInput && chatId) chatInput.value = chatId;
+    const waTo = data.alert_whatsapp_to || '';
+    const waToInput = document.getElementById('wa-to');
+    if (waToInput && waTo) waToInput.value = waTo;
   } catch (_) {}
 }
 
-async function saveTelegramSettings() {
-  const enabled = document.getElementById('tg-enabled').checked;
-  const botToken = document.getElementById('tg-bot-token').value.trim();
-  const chatId   = document.getElementById('tg-chat-id').value.trim();
-  const tgLabel  = document.getElementById('tg-enabled-label');
+async function saveWhatsAppSettings() {
+  const enabled = document.getElementById('wa-enabled').checked;
+  const to      = document.getElementById('wa-to').value.trim();
+  const waLabel = document.getElementById('wa-enabled-label');
 
-  const payload = { alert_telegram_enabled: enabled ? 'true' : 'false' };
-  if (botToken) payload.alert_telegram_bot_token = botToken;
-  if (chatId)   payload.alert_telegram_chat_id   = chatId;
+  const payload = { alert_whatsapp_enabled: enabled ? 'true' : 'false' };
+  if (to) payload.alert_whatsapp_to = to;
 
   try {
     await fetch('/api/settings', {
@@ -1204,17 +1197,15 @@ async function saveTelegramSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
-    // Clear token field after save (don't leave credentials in the DOM)
-    document.getElementById('tg-bot-token').value = '';
-    const okEl = document.getElementById('tg-save-ok');
+    waLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    const okEl = document.getElementById('wa-save-ok');
     if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
   } catch (e) {
     showToast('Save failed: ' + e.message, 'err');
   }
 }
 
-async function testTelegramAlert() {
+async function testWhatsAppAlert() {
   try {
     const r = await fetch('/api/alerts/test', { method: 'POST' });
     const data = await r.json();

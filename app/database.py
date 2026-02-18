@@ -86,9 +86,8 @@ async def seed_default_settings(db: aiosqlite.Connection) -> None:
     """Seed default settings if they don't already exist."""
     defaults = [
         ("session_cost_warning_usd", "5.0"),
-        ("alert_telegram_enabled", "false"),
-        ("alert_telegram_bot_token", ""),
-        ("alert_telegram_chat_id", ""),
+        ("alert_whatsapp_enabled", "false"),
+        ("alert_whatsapp_to", "+351910298749"),
         ("alert_last_session_id", ""),
     ]
     for key, value in defaults:
@@ -96,31 +95,6 @@ async def seed_default_settings(db: aiosqlite.Connection) -> None:
             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
             (key, value),
         )
-
-    # Seed bot token from environment variable if DB entry is still empty
-    import os
-    token_from_env = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if token_from_env:
-        row = await (await db.execute(
-            "SELECT value FROM settings WHERE key = 'alert_telegram_bot_token'"
-        )).fetchone()
-        if row and not row["value"]:
-            await db.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                ("alert_telegram_bot_token", token_from_env),
-            )
-
-    # Seed chat ID from environment variable if DB entry is still empty
-    chat_id_from_env = os.getenv("TELEGRAM_CHAT_ID", "")
-    if chat_id_from_env:
-        row = await (await db.execute(
-            "SELECT value FROM settings WHERE key = 'alert_telegram_chat_id'"
-        )).fetchone()
-        if row and not row["value"]:
-            await db.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                ("alert_telegram_chat_id", chat_id_from_env),
-            )
 
 
 async def init_db() -> None:
