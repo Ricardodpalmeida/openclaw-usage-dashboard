@@ -57,7 +57,9 @@ async def check_and_alert(db) -> dict:
     if session.get("status") == "no_active_session":
         return {"status": "no_session"}
 
-    if not session.get("warning"):
+    cost_warning = session.get("warning", False)
+    token_warning = session.get("token_warning", False)
+    if not cost_warning and not token_warning:
         return {"status": "ok", "cost": session.get("estimated_cost_usd")}
 
     last_alerted = await get_setting(db, "alert_last_session_id", "")
@@ -66,15 +68,23 @@ async def check_and_alert(db) -> dict:
         return {"status": "already_alerted"}
 
     threshold = session.get("warning_threshold_usd", 5.0)
+    token_threshold = session.get("warning_threshold_tokens", 100000)
     cost = session.get("estimated_cost_usd", 0)
+    total_tokens = session.get("total_tokens", 0)
     duration = session.get("duration_minutes", 0)
     models = ", ".join(session.get("models_used", []))
     count = session.get("message_count", 0)
 
+    reasons = []
+    if cost_warning:
+        reasons.append(f"💰 Cost: ${cost:.2f} (limit ${threshold:.2f})")
+    if token_warning:
+        reasons.append(f"📏 Context: {total_tokens:,} tokens (limit {token_threshold:,})")
+
     msg = (
-        f"⚠️ OpenClaw session cost alert\n\n"
-        f"Current cost: ${cost:.2f} (threshold: ${threshold:.2f})\n"
-        f"Models: {models} | {duration}m | {count} messages\n\n"
+        f"⚠️ OpenClaw session alert\n\n"
+        + "\n".join(reasons)
+        + f"\n\nModels: {models} | {duration}m | {count} messages\n\n"
         f"Run /new to start a fresh session."
     )
 
