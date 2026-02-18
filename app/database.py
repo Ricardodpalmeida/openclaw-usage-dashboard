@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DB_PATH = Path(os.getenv("DB_PATH", "/app/data/usage.db"))
 
 SEED_PRICING = [
-    ("claude-opus-4-6",        "Claude Opus 4.6",  15.00, 75.00,  1.50,   18.75),
+    ("claude-opus-4-6",        "Claude Opus 4.6",   5.00, 25.00,  0.50,    6.25),
     ("claude-sonnet-4-6",      "Claude Sonnet 4.6",  3.00, 15.00,  0.30,    3.75),
     ("kimi-k2.5",              "Kimi K2.5",          0.60,  3.00,  0.15,    0.60),
     ("kimi-k2-thinking",       "Kimi K2 Thinking",   0.60,  3.00,  0.15,    0.60),
