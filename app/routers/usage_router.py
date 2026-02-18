@@ -92,15 +92,33 @@ async def get_summary():
     }
 
 
+_VALID_TOKEN_TYPES = {"input", "output", "cache_read", "cache_write"}
+_TOKEN_TYPE_COLUMN = {
+    "input":       "input_tokens",
+    "output":      "output_tokens",
+    "cache_read":  "cache_read_tokens",
+    "cache_write": "cache_write_tokens",
+}
+
+
 @router.get("/weekly")
-async def get_weekly(week_offset: int = Query(default=0)):
-    """Return daily real_tokens + request totals for the 7 days of the requested week."""
+async def get_weekly(
+    week_offset: int = Query(default=0),
+    token_type: str = Query(default="output"),
+):
+    """Return daily token totals for the 7 days of the requested week.
+
+    token_type: one of input | output | cache_read | cache_write (default: output)
+    """
+    if token_type not in _VALID_TOKEN_TYPES:
+        token_type = "output"
+    col = _TOKEN_TYPE_COLUMN[token_type]
     week_start, week_end = _week_bounds(week_offset)
 
     async with get_db() as db:
-        rows = await (await db.execute("""
+        rows = await (await db.execute(f"""
             SELECT date,
-                   SUM(real_tokens)   AS rt,
+                   SUM({col})         AS tokens,
                    SUM(request_count) AS rc
             FROM usage_records
             WHERE date >= ? AND date <= ?
@@ -109,18 +127,19 @@ async def get_weekly(week_offset: int = Query(default=0)):
         """, (week_start, week_end))).fetchall()
 
     # Build a map for the 7 days (fill zeros for missing days)
-    row_map = {r["date"]: (int(r["rt"] or 0), int(r["rc"] or 0)) for r in rows}
+    row_map = {r["date"]: (int(r["tokens"] or 0), int(r["rc"] or 0)) for r in rows}
 
     days = []
     start = date.fromisoformat(week_start)
     for i in range(7):
         d = (start + timedelta(days=i)).isoformat()
-        rt, rc = row_map.get(d, (0, 0))
-        days.append({"date": d, "real_tokens": rt, "requests": rc})
+        tokens, rc = row_map.get(d, (0, 0))
+        days.append({"date": d, "tokens": tokens, "token_type": token_type, "requests": rc})
 
     return {
         "week_start": week_start,
         "week_end": week_end,
+        "token_type": token_type,
         "days": days,
     }
 
@@ -162,16 +181,17 @@ async def get_by_model():
             SELECT
                 provider,
                 model,
-                SUM(real_tokens)         AS real_tokens,
-                SUM(input_tokens)        AS input_tokens,
-                SUM(output_tokens)       AS output_tokens,
-                SUM(cache_read_tokens)   AS cache_read_tokens,
-                SUM(request_count)       AS request_count,
-                SUM(estimated_cost_usd)  AS estimated_cost_usd
+                SUM(real_tokens)          AS real_tokens,
+                SUM(input_tokens)         AS input_tokens,
+                SUM(output_tokens)        AS output_tokens,
+                SUM(cache_read_tokens)    AS cache_read_tokens,
+                SUM(cache_write_tokens)   AS cache_write_tokens,
+                SUM(request_count)        AS request_count,
+                SUM(estimated_cost_usd)   AS estimated_cost_usd
             FROM usage_records
             WHERE date >= ?
             GROUP BY provider, model
-            ORDER BY real_tokens DESC
+            ORDER BY output_tokens DESC
         """, (date_30d,))).fetchall()
 
     return [
@@ -182,6 +202,7 @@ async def get_by_model():
             input_tokens=int(r["input_tokens"] or 0),
             output_tokens=int(r["output_tokens"] or 0),
             cache_read_tokens=int(r["cache_read_tokens"] or 0),
+            cache_write_tokens=int(r["cache_write_tokens"] or 0),
             request_count=int(r["request_count"] or 0),
             estimated_cost_usd=float(r["estimated_cost_usd"] or 0.0),
         )
@@ -190,29 +211,37 @@ async def get_by_model():
 
 
 @router.get("/weekly-by-model")
-async def get_weekly_by_model(week_offset: int = Query(default=0)):
-    """Return daily real_tokens per model for the 7 days of the requested week.
+async def get_weekly_by_model(
+    week_offset: int = Query(default=0),
+    token_type: str = Query(default="output"),
+):
+    """Return daily token counts per model for the 7 days of the requested week.
+
+    token_type: one of input | output | cache_read | cache_write (default: output)
 
     - models: all models with any usage in the last 30 days (for consistent color assignment)
     - days: each day has by_model dict zero-filled for all models
-    - uses real_tokens (input + output only, not cache)
     """
+    if token_type not in _VALID_TOKEN_TYPES:
+        token_type = "output"
+    col = _TOKEN_TYPE_COLUMN[token_type]
+
     week_start, week_end = _week_bounds(week_offset)
     date_30d = _date_n_days_ago(30)
 
     async with get_db() as db:
-        # All models with usage in last 30 days, ordered by total real tokens desc
+        # All models with usage in last 30 days, ordered by total output tokens desc
         model_rows = await (await db.execute("""
-            SELECT model, SUM(real_tokens) AS total_rt
+            SELECT model, SUM(output_tokens) AS total_out
             FROM usage_records
             WHERE date >= ?
             GROUP BY model
-            ORDER BY total_rt DESC
+            ORDER BY total_out DESC
         """, (date_30d,))).fetchall()
 
-        # Per-day per-model data for the requested week
-        week_rows = await (await db.execute("""
-            SELECT date, model, SUM(real_tokens) AS rt
+        # Per-day per-model data for the requested week (selected token type)
+        week_rows = await (await db.execute(f"""
+            SELECT date, model, SUM({col}) AS tokens
             FROM usage_records
             WHERE date >= ? AND date <= ?
             GROUP BY date, model
@@ -221,13 +250,13 @@ async def get_weekly_by_model(week_offset: int = Query(default=0)):
 
     models = [r["model"] for r in model_rows]
 
-    # Build lookup: {date: {model: rt}}
+    # Build lookup: {date: {model: tokens}}
     week_map: dict = {}
     for r in week_rows:
         d = r["date"]
         if d not in week_map:
             week_map[d] = {}
-        week_map[d][r["model"]] = int(r["rt"] or 0)
+        week_map[d][r["model"]] = int(r["tokens"] or 0)
 
     # Build 7-day response
     start = date.fromisoformat(week_start)
@@ -241,6 +270,7 @@ async def get_weekly_by_model(week_offset: int = Query(default=0)):
     return {
         "week_start": week_start,
         "week_end": week_end,
+        "token_type": token_type,
         "models": models,
         "days": days,
     }

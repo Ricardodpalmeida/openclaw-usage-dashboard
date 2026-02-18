@@ -26,6 +26,7 @@ class UsageByModel(BaseModel):
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
+    cache_write_tokens: int
     request_count: int
     estimated_cost_usd: float
 

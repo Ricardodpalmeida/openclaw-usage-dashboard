@@ -39,18 +39,19 @@ async def init_db() -> None:
             DROP TABLE IF EXISTS usage_records;
 
             CREATE TABLE IF NOT EXISTS usage_records (
-                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                provider            TEXT NOT NULL,
-                model               TEXT NOT NULL,
-                date                TEXT NOT NULL,      -- YYYY-MM-DD
-                hour                INTEGER NOT NULL DEFAULT 0,  -- 0-23 UTC
-                input_tokens        INTEGER DEFAULT 0,
-                output_tokens       INTEGER DEFAULT 0,
-                cache_read_tokens   INTEGER DEFAULT 0,
-                real_tokens         INTEGER DEFAULT 0,  -- input + output (billable)
-                request_count       INTEGER DEFAULT 0,
-                estimated_cost_usd  REAL    DEFAULT 0.0,
-                synced_at           TEXT NOT NULL,
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider             TEXT NOT NULL,
+                model                TEXT NOT NULL,
+                date                 TEXT NOT NULL,      -- YYYY-MM-DD
+                hour                 INTEGER NOT NULL DEFAULT 0,  -- 0-23 UTC
+                input_tokens         INTEGER DEFAULT 0,
+                output_tokens        INTEGER DEFAULT 0,
+                cache_read_tokens    INTEGER DEFAULT 0,
+                cache_write_tokens   INTEGER DEFAULT 0,
+                real_tokens          INTEGER DEFAULT 0,  -- input + output (billable)
+                request_count        INTEGER DEFAULT 0,
+                estimated_cost_usd   REAL    DEFAULT 0.0,
+                synced_at            TEXT NOT NULL,
                 UNIQUE(provider, model, date, hour)
             );
 
@@ -78,14 +79,15 @@ async def upsert_usage_record(db: aiosqlite.Connection, record: dict) -> None:
     await db.execute("""
         INSERT INTO usage_records
             (provider, model, date, hour, input_tokens, output_tokens, cache_read_tokens,
-             real_tokens, request_count, estimated_cost_usd, synced_at)
+             cache_write_tokens, real_tokens, request_count, estimated_cost_usd, synced_at)
         VALUES
             (:provider, :model, :date, :hour, :input_tokens, :output_tokens, :cache_read_tokens,
-             :real_tokens, :request_count, :estimated_cost_usd, :synced_at)
+             :cache_write_tokens, :real_tokens, :request_count, :estimated_cost_usd, :synced_at)
         ON CONFLICT(provider, model, date, hour) DO UPDATE SET
             input_tokens        = excluded.input_tokens,
             output_tokens       = excluded.output_tokens,
             cache_read_tokens   = excluded.cache_read_tokens,
+            cache_write_tokens  = excluded.cache_write_tokens,
             real_tokens         = excluded.real_tokens,
             request_count       = excluded.request_count,
             estimated_cost_usd  = excluded.estimated_cost_usd,

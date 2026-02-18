@@ -60,19 +60,21 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
                 rec.input_tokens,
                 rec.output_tokens,
                 rec.cache_read_tokens,
+                rec.cache_write_tokens,
             )
             await upsert_usage_record(db, {
-                "provider":           rec.provider,
-                "model":              rec.model,
-                "date":               rec.date,
-                "hour":               rec.hour,
-                "input_tokens":       rec.input_tokens,
-                "output_tokens":      rec.output_tokens,
-                "cache_read_tokens":  rec.cache_read_tokens,
-                "real_tokens":        rec.real_tokens,
-                "request_count":      rec.request_count,
-                "estimated_cost_usd": cost,
-                "synced_at":          synced_at,
+                "provider":            rec.provider,
+                "model":               rec.model,
+                "date":                rec.date,
+                "hour":                rec.hour,
+                "input_tokens":        rec.input_tokens,
+                "output_tokens":       rec.output_tokens,
+                "cache_read_tokens":   rec.cache_read_tokens,
+                "cache_write_tokens":  rec.cache_write_tokens,
+                "real_tokens":         rec.real_tokens,
+                "request_count":       rec.request_count,
+                "estimated_cost_usd":  cost,
+                "synced_at":           synced_at,
             })
         await insert_sync_log(db, provider_name, "ok", f"{len(records)} records upserted", synced_at)
         await db.commit()

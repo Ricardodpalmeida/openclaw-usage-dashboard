@@ -2,6 +2,7 @@
 OpenClaw session parser — extracts token usage from session JSONL files.
 
 Data source: ~/.openclaw/agents/main/sessions/*.jsonl
+             Also reads archived sessions: *.jsonl.deleted.* and *.jsonl.reset.*
 
 Each session file contains one JSON object per line. Assistant messages
 include a `usage` field with per-call token counts and cost. This module
@@ -77,6 +78,10 @@ def parse_sessions(
     """
     Parse all session JSONL files and return aggregated usage records.
 
+    Reads active sessions (*.jsonl) as well as archived sessions:
+      - *.jsonl.deleted.TIMESTAMP  (sessions removed/reset by user)
+      - *.jsonl.reset.TIMESTAMP    (sessions reset by user)
+
     Args:
         model_prefixes: Optional list of model id prefixes to filter by
                         (e.g. ["claude", "gemini", "kimi"]). None = all models.
@@ -85,8 +90,8 @@ def parse_sessions(
 
     Returns:
         List of dicts with keys: provider, model, date, hour, input_tokens,
-        output_tokens, cache_read_tokens, real_tokens, request_count,
-        estimated_cost_usd.
+        output_tokens, cache_read_tokens, cache_write_tokens, real_tokens,
+        request_count, estimated_cost_usd.
     """
     sessions_path = _get_sessions_path()
 
@@ -94,7 +99,12 @@ def parse_sessions(
         logger.warning("Sessions path does not exist: %s", sessions_path)
         return []
 
-    session_files = list(sessions_path.glob("*.jsonl"))
+    # Collect all session file variants (active + deleted + reset), skip lock files
+    session_files = []
+    for pattern in ["*.jsonl", "*.jsonl.deleted.*", "*.jsonl.reset.*"]:
+        session_files.extend(sessions_path.glob(pattern))
+    session_files = [f for f in session_files if not f.name.endswith(".lock")]
+
     if not session_files:
         logger.info("No session files found in %s", sessions_path)
         return []
@@ -105,6 +115,7 @@ def parse_sessions(
             "input_tokens": 0,
             "output_tokens": 0,
             "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
             "real_tokens": 0,
             "request_count": 0,
             "estimated_cost_usd": 0.0,
@@ -161,6 +172,7 @@ def parse_sessions(
                     input_t = usage.get("input", 0)
                     output_t = usage.get("output", 0)
                     cache_read_t = usage.get("cacheRead", 0)
+                    cache_write_t = usage.get("cacheWrite", 0)
                     real_t = input_t + output_t  # billable tokens only
 
                     key: AggKey = (provider, model, date, hour)
@@ -168,6 +180,7 @@ def parse_sessions(
                     bucket["input_tokens"] += input_t
                     bucket["output_tokens"] += output_t
                     bucket["cache_read_tokens"] += cache_read_t
+                    bucket["cache_write_tokens"] += cache_write_t
                     bucket["real_tokens"] += real_t
                     bucket["request_count"] += 1
                     bucket["estimated_cost_usd"] += cost
@@ -195,6 +208,7 @@ def parse_sessions(
                 "input_tokens": bucket["input_tokens"],
                 "output_tokens": bucket["output_tokens"],
                 "cache_read_tokens": bucket["cache_read_tokens"],
+                "cache_write_tokens": bucket["cache_write_tokens"],
                 "real_tokens": bucket["real_tokens"],
                 "request_count": bucket["request_count"],
                 "estimated_cost_usd": bucket["estimated_cost_usd"],

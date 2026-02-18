@@ -122,6 +122,38 @@
     #week-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); min-width: 120px; text-align: center; }
     .chart-wrap { position: relative; height: 260px; }
 
+    /* ── Token type toggle ──────────────────────────────────────────────── */
+    .token-type-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .token-type-toggle label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-right: 4px;
+    }
+    .token-type-toggle button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .token-type-toggle button:hover { background: var(--bg-hover); color: var(--text); }
+    .token-type-toggle button.active {
+      background: rgba(88,166,255,.15);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
     /* ── Hourly section ──────────────────────────────────────────────────── */
     #hourly-section { display: none; }
     .back-link {
@@ -265,7 +297,13 @@
           <span id="week-label">—</span>
           <button id="btn-next-week" onclick="navigateWeek(1)">Next →</button>
         </div>
-        <span class="chart-title" id="weekly-title">Daily Real Tokens</span>
+        <div class="token-type-toggle">
+          <label>Token type:</label>
+          <button id="tt-input"       onclick="setTokenType('input')">Input</button>
+          <button id="tt-output"      onclick="setTokenType('output')" class="active">Output</button>
+          <button id="tt-cache_read"  onclick="setTokenType('cache_read')">Cache Read</button>
+          <button id="tt-cache_write" onclick="setTokenType('cache_write')">Cache Write</button>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chart-weekly"></canvas></div>
     </div>
@@ -291,10 +329,10 @@
           <tr>
             <th>Provider</th>
             <th>Model</th>
-            <th>Real Tokens</th>
-            <th>Input</th>
             <th>Output</th>
+            <th>Input</th>
             <th>Cache Read</th>
+            <th>Cache Write</th>
             <th>Requests</th>
             <th>Est. Cost (USD)</th>
           </tr>
@@ -358,6 +396,24 @@ function colorForModel(model) {
 /* ── Week state ─────────────────────────────────────────────────────────── */
 let currentWeekOffset = 0;
 let currentWeekData = null;   // cached days array for label lookup
+let currentTokenType = 'output';  // default token type for weekly chart
+
+const TOKEN_TYPE_LABELS = {
+  input:       'Input Tokens',
+  output:      'Output Tokens',
+  cache_read:  'Cache Read Tokens',
+  cache_write: 'Cache Write Tokens',
+};
+
+function setTokenType(type) {
+  currentTokenType = type;
+  // Update toggle button styles
+  ['input', 'output', 'cache_read', 'cache_write'].forEach(t => {
+    const btn = document.getElementById('tt-' + t);
+    if (btn) btn.classList.toggle('active', t === type);
+  });
+  loadWeekly(currentWeekOffset);
+}
 
 function weekLabel(weekStart) {
   const d = new Date(weekStart + 'T00:00:00Z');
@@ -375,6 +431,8 @@ function buildWeeklyChart(weekData) {
   currentWeekData = weekData.days;
 
   const labels = weekData.days.map(d => dayLabel(d.date));
+  const tokenType = weekData.token_type || currentTokenType;
+  const yAxisLabel = TOKEN_TYPE_LABELS[tokenType] || 'Tokens';
 
   // Update nav label
   document.getElementById('week-label').textContent =
@@ -414,7 +472,11 @@ function buildWeeklyChart(weekData) {
       },
       scales: {
         x: { stacked: true, ticks: { font: { size: 11 } } },
-        y: { stacked: true, ticks: { callback: v => fmtK(v) } }
+        y: {
+          stacked: true,
+          ticks: { callback: v => fmtK(v) },
+          title: { display: true, text: yAxisLabel, color: '#8b949e', font: { size: 11 } }
+        }
       },
       onClick: (evt, elements) => {
         if (!elements.length) return;
@@ -495,7 +557,8 @@ async function loadSummary() {
 }
 
 async function loadWeekly(offset) {
-  const data = await fetch('/api/usage/weekly-by-model?week_offset=' + offset).then(r => r.json());
+  const url = `/api/usage/weekly-by-model?week_offset=${offset}&token_type=${currentTokenType}`;
+  const data = await fetch(url).then(r => r.json());
   buildWeeklyChart(data);
 }
 
@@ -510,10 +573,10 @@ async function loadModelTable() {
     <tr>
       <td class="text">${d.provider}</td>
       <td class="text">${d.model}</td>
-      <td>${fmt(d.real_tokens)}</td>
-      <td>${fmt(d.input_tokens)}</td>
       <td>${fmt(d.output_tokens)}</td>
+      <td>${fmt(d.input_tokens)}</td>
       <td>${fmt(d.cache_read_tokens)}</td>
+      <td>${fmt(d.cache_write_tokens)}</td>
       <td>${fmt(d.request_count)}</td>
       <td>${fmtCost(d.estimated_cost_usd)}</td>
     </tr>`).join('');

@@ -23,6 +23,7 @@ class UsageRecord:
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
+    cache_write_tokens: int
     real_tokens: int        # input + output (billable)
     request_count: int
     estimated_cost_usd: float
