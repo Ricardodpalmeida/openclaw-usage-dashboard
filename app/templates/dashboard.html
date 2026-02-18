@@ -1092,7 +1092,7 @@ function fmtDuration(minutes) {
 async function loadCurrentSession() {
   const card = document.getElementById('session-card');
   try {
-    const data = await fetch('/api/session/current?_t=' + Date.now(), { cache: 'no-store' }).then(r => r.json());
+    const data = await fetch('/api/session/current', { cache: 'no-store' }).then(r => r.json());
 
     if (data.status === 'no_active_session') {
       card.classList.remove('warning');

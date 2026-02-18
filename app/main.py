@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .database import init_db
 from .scheduler import start_scheduler, sync_all
@@ -44,6 +45,26 @@ app = FastAPI(
     description="Token usage tracking across all AI model providers via log parsing.",
     version="1.0.0",
 )
+
+
+class NoCDNCacheMiddleware(BaseHTTPMiddleware):
+    """Add CDN-specific no-cache headers to all /api/* responses.
+
+    Cloudflare respects CDN-Cache-Control and Surrogate-Control over the
+    standard Cache-Control header, ensuring dynamic API responses are never
+    served from edge cache.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["CDN-Cache-Control"] = "no-store"
+            response.headers["Surrogate-Control"] = "no-store"
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.add_middleware(NoCDNCacheMiddleware)
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
