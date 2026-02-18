@@ -1105,6 +1105,7 @@ async function loadCurrentSession() {
 
     const models = (data.models_used || []).join(', ') || '—';
     const dur = fmtDuration(data.duration_minutes || 0);
+    const totalTokens = (data.input_tokens||0) + (data.output_tokens||0) + (data.cache_read_tokens||0) + (data.cache_write_tokens||0);
 
     card.innerHTML = `
       <div class="session-header">
@@ -1118,7 +1119,9 @@ async function loadCurrentSession() {
         <span class="sep">|</span>
         <span>${escHtml(models)}</span>
         <span class="sep">|</span>
-        Est. cost: <span class="${costClass}">${fmtCost(cost)}</span>
+        <span class="${costClass}">${fmtK(totalTokens)} tokens</span>
+        <span class="sep">|</span>
+        <span style="color:var(--text-dim);font-size:12px">${fmtCost(cost)}</span>
         ${warning ? '<span class="session-warning-badge" style="display:inline">⚠️ Over threshold</span>' : ''}
       </div>
       <div class="session-tokens">
