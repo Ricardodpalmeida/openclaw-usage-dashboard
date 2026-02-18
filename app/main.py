@@ -28,6 +28,7 @@ from .scheduler import start_scheduler, sync_all
 from .routers.usage_router import router as usage_router, session_router
 from .routers.provider_router import router as provider_router
 from .routers.pricing_router import router as pricing_router, settings_router
+from .routers.alerts_router import router as alerts_router
 
 load_dotenv()
 
@@ -68,6 +69,7 @@ app.include_router(session_router)
 app.include_router(provider_router)
 app.include_router(pricing_router)
 app.include_router(settings_router)
+app.include_router(alerts_router)
 
 
 @app.get("/", response_class=HTMLResponse)

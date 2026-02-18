@@ -47,9 +47,11 @@ def _find_active_session() -> Path | None:
     return None
 
 
-@session_router.get("/current")
-async def get_current_session():
-    """Return live cost and token stats for the currently active session."""
+async def get_current_session_data(db) -> dict:
+    """
+    Compute live cost and token stats for the currently active session.
+    Accepts an open DB connection — used by both the API endpoint and the alerting module.
+    """
     active = _find_active_session()
     if active is None:
         return {"status": "no_active_session"}
@@ -57,9 +59,8 @@ async def get_current_session():
     session_id = active.stem  # UUID part of filename
     parsed = parse_single_session(active)
 
-    async with get_db() as db:
-        pricing_rows = await get_all_pricing(db)
-        threshold_str = await get_setting(db, "session_cost_warning_usd", "5.0")
+    pricing_rows = await get_all_pricing(db)
+    threshold_str = await get_setting(db, "session_cost_warning_usd", "5.0")
 
     threshold = float(threshold_str)
     pricing_map = {r["model"]: dict(r) for r in pricing_rows}
@@ -112,6 +113,13 @@ async def get_current_session():
         "warning": total_cost >= threshold,
         "warning_threshold_usd": threshold,
     }
+
+
+@session_router.get("/current")
+async def get_current_session():
+    """Return live cost and token stats for the currently active session."""
+    async with get_db() as db:
+        return await get_current_session_data(db)
 
 
 def _date_n_days_ago(n: int) -> str:

@@ -9,6 +9,8 @@ services:
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
       - OPENCLAW_SESSIONS_PATH=/openclaw-sessions
       - SYNC_INTERVAL_HOURS=6
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-8539256468}
     volumes:
       - ./data:/app/data                                           # SQLite DB persistence
       - /home/ric/.openclaw/agents/main/sessions:/openclaw-sessions:ro  # Read-only session access

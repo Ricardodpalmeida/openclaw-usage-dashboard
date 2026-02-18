@@ -21,6 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .database import get_db, upsert_usage_record, insert_sync_log, get_all_pricing
 from .pricing import estimate_cost
 from .providers import ALL_PROVIDERS
+from .alerting import check_and_alert
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,15 @@ async def sync_all() -> None:
     logger.info("Full sync complete")
 
 
+async def check_session_alert() -> None:
+    """Check session cost and send a Telegram alert if threshold exceeded. No LLM involved."""
+    async with get_db() as db:
+        result = await check_and_alert(db)
+    logger.info("Session alert check: %s", result)
+
+
 def start_scheduler() -> None:
-    """Register recurring job and start the scheduler."""
+    """Register recurring jobs and start the scheduler."""
     interval_hours = int(os.getenv("SYNC_INTERVAL_HOURS", "6"))
 
     scheduler.add_job(
@@ -111,5 +119,17 @@ def start_scheduler() -> None:
         id="sync_all",
         replace_existing=True,
     )
+
+    scheduler.add_job(
+        check_session_alert,
+        trigger="interval",
+        minutes=30,
+        id="session_alert",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — syncing every %d hour(s)", interval_hours)
+    logger.info(
+        "Scheduler started — syncing every %d hour(s), session alerts every 30 minutes",
+        interval_hours,
+    )

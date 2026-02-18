@@ -429,6 +429,65 @@
       font-weight: 600;
       display: none;
     }
+    .telegram-settings-block {
+      padding: 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .telegram-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .telegram-text-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 13px;
+      flex: 1;
+      min-width: 160px;
+      max-width: 340px;
+    }
+    .telegram-text-input:focus { outline: none; border-color: var(--accent); }
+    .telegram-toggle {
+      appearance: none;
+      width: 36px;
+      height: 20px;
+      background: var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      position: relative;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .telegram-toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      transition: left .2s;
+    }
+    .telegram-toggle:checked { background: var(--green); }
+    .telegram-toggle:checked::after { left: 19px; }
+    .alert-test-btn {
+      background: rgba(63,185,80,.15);
+      border: 1px solid var(--green);
+      color: var(--green);
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .alert-test-btn:hover { background: rgba(63,185,80,.25); }
 
     /* ── Toast ───────────────────────────────────────────────────────────── */
     #toast {
@@ -622,6 +681,28 @@
           <span class="alert-settings-label">USD</span>
           <button class="alert-save-btn" onclick="saveAlertThreshold()">Save</button>
           <span class="alert-save-ok" id="alert-save-ok">✓ Saved</span>
+        </div>
+
+        <!-- Telegram Alert Settings -->
+        <div class="telegram-settings-block">
+          <div class="telegram-row">
+            <span class="alert-settings-label">📬 Telegram alerts:</span>
+            <input type="checkbox" class="telegram-toggle" id="tg-enabled" onchange="saveTelegramSettings()" />
+            <span class="alert-settings-label" id="tg-enabled-label">Disabled</span>
+          </div>
+          <div class="telegram-row">
+            <span class="alert-settings-label">Bot token:</span>
+            <input type="password" class="telegram-text-input" id="tg-bot-token" placeholder="Leave blank to keep current" />
+          </div>
+          <div class="telegram-row">
+            <span class="alert-settings-label">Chat ID:</span>
+            <input type="text" class="telegram-text-input" id="tg-chat-id" placeholder="e.g. 8539256468" style="max-width:180px;" />
+          </div>
+          <div class="telegram-row">
+            <button class="alert-save-btn" onclick="saveTelegramSettings()">Save</button>
+            <button class="alert-test-btn" onclick="testTelegramAlert()">🔔 Test Alert</button>
+            <span class="alert-save-ok" id="tg-save-ok">✓ Saved</span>
+          </div>
         </div>
       </div>
     </div>
@@ -1092,7 +1173,59 @@ async function loadAlertThreshold() {
     if (threshold !== undefined) {
       document.getElementById('alert-threshold').value = parseFloat(threshold).toFixed(2);
     }
+    // Load Telegram settings
+    const enabled = data.alert_telegram_enabled === 'true';
+    const tgToggle = document.getElementById('tg-enabled');
+    const tgLabel  = document.getElementById('tg-enabled-label');
+    if (tgToggle) {
+      tgToggle.checked = enabled;
+      tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    }
+    // Show masked chat ID (bot token stays hidden — password field)
+    const chatId = data.alert_telegram_chat_id || '';
+    const chatInput = document.getElementById('tg-chat-id');
+    if (chatInput && chatId) chatInput.value = chatId;
   } catch (_) {}
+}
+
+async function saveTelegramSettings() {
+  const enabled = document.getElementById('tg-enabled').checked;
+  const botToken = document.getElementById('tg-bot-token').value.trim();
+  const chatId   = document.getElementById('tg-chat-id').value.trim();
+  const tgLabel  = document.getElementById('tg-enabled-label');
+
+  const payload = { alert_telegram_enabled: enabled ? 'true' : 'false' };
+  if (botToken) payload.alert_telegram_bot_token = botToken;
+  if (chatId)   payload.alert_telegram_chat_id   = chatId;
+
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    // Clear token field after save (don't leave credentials in the DOM)
+    document.getElementById('tg-bot-token').value = '';
+    const okEl = document.getElementById('tg-save-ok');
+    if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'err');
+  }
+}
+
+async function testTelegramAlert() {
+  try {
+    const r = await fetch('/api/alerts/test', { method: 'POST' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast('Test alert sent ✓', 'ok');
+    } else {
+      showToast('Test failed: ' + (data.detail || r.statusText), 'err');
+    }
+  } catch (e) {
+    showToast('Test failed: ' + e.message, 'err');
+  }
 }
 
 async function addModel() {
