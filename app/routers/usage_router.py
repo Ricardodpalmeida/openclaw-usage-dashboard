@@ -3,8 +3,10 @@ Usage API endpoints.
 
 GET /api/usage/summary           — aggregate totals (last 30d) with period breakdown
 GET /api/usage/weekly            — daily totals for a given week (Mon–Sun)
+GET /api/usage/weekly-by-model   — daily totals per model for a given week
 GET /api/usage/hourly            — per-hour breakdown for a given date
 GET /api/usage/by-model          — breakdown per model, sorted by real_tokens desc
+GET /api/pricing                 — hard-coded provider pricing table
 """
 
 from datetime import date, timedelta
@@ -17,6 +19,7 @@ from ..models import (
     UsageSummary, UsageByModel, WeeklyUsage, HourlyBreakdown,
     DailyUsage, HourlyUsage,
 )
+from ..pricing import PRICING
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
@@ -184,3 +187,84 @@ async def get_by_model():
         )
         for r in rows
     ]
+
+
+@router.get("/weekly-by-model")
+async def get_weekly_by_model(week_offset: int = Query(default=0)):
+    """Return daily real_tokens per model for the 7 days of the requested week.
+
+    - models: all models with any usage in the last 30 days (for consistent color assignment)
+    - days: each day has by_model dict zero-filled for all models
+    - uses real_tokens (input + output only, not cache)
+    """
+    week_start, week_end = _week_bounds(week_offset)
+    date_30d = _date_n_days_ago(30)
+
+    async with get_db() as db:
+        # All models with usage in last 30 days, ordered by total real tokens desc
+        model_rows = await (await db.execute("""
+            SELECT model, SUM(real_tokens) AS total_rt
+            FROM usage_records
+            WHERE date >= ?
+            GROUP BY model
+            ORDER BY total_rt DESC
+        """, (date_30d,))).fetchall()
+
+        # Per-day per-model data for the requested week
+        week_rows = await (await db.execute("""
+            SELECT date, model, SUM(real_tokens) AS rt
+            FROM usage_records
+            WHERE date >= ? AND date <= ?
+            GROUP BY date, model
+            ORDER BY date ASC
+        """, (week_start, week_end))).fetchall()
+
+    models = [r["model"] for r in model_rows]
+
+    # Build lookup: {date: {model: rt}}
+    week_map: dict = {}
+    for r in week_rows:
+        d = r["date"]
+        if d not in week_map:
+            week_map[d] = {}
+        week_map[d][r["model"]] = int(r["rt"] or 0)
+
+    # Build 7-day response
+    start = date.fromisoformat(week_start)
+    days = []
+    for i in range(7):
+        d = (start + timedelta(days=i)).isoformat()
+        day_label = (start + timedelta(days=i)).strftime("%a %-d")
+        by_model = {m: week_map.get(d, {}).get(m, 0) for m in models}
+        days.append({"date": d, "label": day_label, "by_model": by_model})
+
+    return {
+        "week_start": week_start,
+        "week_end": week_end,
+        "models": models,
+        "days": days,
+    }
+
+
+# ── Pricing endpoint (outside /api/usage prefix, registered at app level) ──
+# This endpoint is registered directly on the router with a full path prefix override.
+# It's appended here for co-location but note the prefix is /api/usage — so the
+# actual pricing endpoint is at /api/usage/pricing-info. A top-level /api/pricing
+# is registered separately in main.py or via a dedicated router.
+
+pricing_router = APIRouter(tags=["pricing"])
+
+
+@pricing_router.get("/api/pricing")
+async def get_pricing():
+    """Return hard-coded API pricing per model (per million tokens).
+
+    Source: official provider pricing pages, Feb 2026.
+    These values are used to estimate costs since session files store cost=0.
+    """
+    return {
+        "source": "hard-coded",
+        "last_updated": "Feb 2026",
+        "unit": "USD per million tokens",
+        "models": PRICING,
+    }

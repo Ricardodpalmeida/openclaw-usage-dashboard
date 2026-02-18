@@ -172,8 +172,10 @@
       font-weight: 600;
       font-family: inherit;
     }
-    .badge-cfg   { background: rgba(88,166,255,.12); color: var(--accent); }
-    .badge-nocfg { background: rgba(139,148,158,.12); color: var(--text-dim); }
+    .badge-cfg      { background: rgba(88,166,255,.12); color: var(--accent); }
+    .badge-nocfg    { background: rgba(139,148,158,.12); color: var(--text-dim); }
+    .badge-nocapture{ background: rgba(227,179,65,.12); color: var(--orange); }
+    .provider-note  { font-size: 10px; color: var(--text-dim); margin-top: 4px; max-width: 160px; line-height: 1.3; }
 
     /* ── Provider grid ───────────────────────────────────────────────────── */
     .provider-grid {
@@ -248,7 +250,7 @@
       <div class="card">
         <div class="card-label">Est. Cost (30d)</div>
         <div class="card-value" id="c-cost-30d">—</div>
-        <div class="card-sub">Moonshot only (embedded in logs)</div>
+        <div class="card-sub">Real pricing applied (Anthropic + Kimi)</div>
       </div>
     </div>
   </section>
@@ -333,6 +335,26 @@ Chart.defaults.font.family = 'inherit';
 let chartWeekly = null;
 let chartHourly = null;
 
+/* ── Model color palette (consistent by model name across week changes) ─── */
+const MODEL_COLORS = [
+  '#4e9af1', // blue
+  '#f17c4e', // orange
+  '#4ef1a0', // green
+  '#f1e44e', // yellow
+  '#c04ef1', // purple
+  '#f14e7c', // red
+];
+// Map model name → color (assigned on first encounter, stable across calls)
+const modelColorMap = {};
+let modelColorIdx = 0;
+function colorForModel(model) {
+  if (!(model in modelColorMap)) {
+    modelColorMap[model] = MODEL_COLORS[modelColorIdx % MODEL_COLORS.length];
+    modelColorIdx++;
+  }
+  return modelColorMap[model];
+}
+
 /* ── Week state ─────────────────────────────────────────────────────────── */
 let currentWeekOffset = 0;
 let currentWeekData = null;   // cached days array for label lookup
@@ -353,7 +375,6 @@ function buildWeeklyChart(weekData) {
   currentWeekData = weekData.days;
 
   const labels = weekData.days.map(d => dayLabel(d.date));
-  const values = weekData.days.map(d => d.real_tokens);
 
   // Update nav label
   document.getElementById('week-label').textContent =
@@ -362,27 +383,38 @@ function buildWeeklyChart(weekData) {
   // Disable next-week button if already on current week
   document.getElementById('btn-next-week').disabled = currentWeekOffset >= 0;
 
+  // Pre-assign colors to all models now so they are consistent
+  weekData.models.forEach(m => colorForModel(m));
+
+  const datasets = weekData.models.map(model => {
+    const color = colorForModel(model);
+    return {
+      label: model,
+      data: weekData.days.map(d => (d.by_model && d.by_model[model]) || 0),
+      backgroundColor: color + 'aa',
+      borderColor: color,
+      borderWidth: 1,
+      borderRadius: 2,
+    };
+  });
+
   if (chartWeekly) chartWeekly.destroy();
   chartWeekly = new Chart(document.getElementById('chart-weekly'), {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Real Tokens',
-        data: values,
-        backgroundColor: 'rgba(88,166,255,.55)',
-        borderColor: '#58a6ff',
-        borderWidth: 1,
-        borderRadius: 4,
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
+        }
+      },
       scales: {
-        x: { ticks: { font: { size: 11 } } },
-        y: { ticks: { callback: v => fmtK(v) } }
+        x: { stacked: true, ticks: { font: { size: 11 } } },
+        y: { stacked: true, ticks: { callback: v => fmtK(v) } }
       },
       onClick: (evt, elements) => {
         if (!elements.length) return;
@@ -463,7 +495,7 @@ async function loadSummary() {
 }
 
 async function loadWeekly(offset) {
-  const data = await fetch('/api/usage/weekly?week_offset=' + offset).then(r => r.json());
+  const data = await fetch('/api/usage/weekly-by-model?week_offset=' + offset).then(r => r.json());
   buildWeeklyChart(data);
 }
 
@@ -490,16 +522,25 @@ async function loadModelTable() {
 async function loadProviders() {
   const data = await fetch('/api/providers').then(r => r.json());
   const grid = document.getElementById('provider-grid');
-  grid.innerHTML = data.map(p => `
+  grid.innerHTML = data.map(p => {
+    const isGemini = p.name === 'google';
+    const badge = isGemini
+      ? `<div style="text-align:right">
+           <span class="badge badge-nocapture">Not captured</span>
+           <div class="provider-note">Gemini is used for heartbeats only — heartbeat calls are not recorded in session files.</div>
+         </div>`
+      : `<span class="badge ${p.is_configured ? 'badge-cfg' : 'badge-nocfg'}">
+           ${p.is_configured ? 'Configured' : 'Not configured'}
+         </span>`;
+    return `
     <div class="provider-card">
       <div>
         <div class="provider-name">${p.display_name}</div>
         <div class="provider-method">${p.method}</div>
       </div>
-      <span class="badge ${p.is_configured ? 'badge-cfg' : 'badge-nocfg'}">
-        ${p.is_configured ? 'Configured' : 'Not configured'}
-      </span>
-    </div>`).join('');
+      ${badge}
+    </div>`;
+  }).join('');
 }
 
 async function loadSyncLog() {

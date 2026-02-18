@@ -18,6 +18,7 @@ from datetime import date, timedelta, timezone, datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .database import get_db, upsert_usage_record, insert_sync_log
+from .pricing import estimate_cost
 from .providers import ALL_PROVIDERS
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,13 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
 
     async with get_db() as db:
         for rec in records:
+            # Recalculate cost using hard-coded pricing (session files store cost=0)
+            cost = estimate_cost(
+                rec.model,
+                rec.input_tokens,
+                rec.output_tokens,
+                rec.cache_read_tokens,
+            )
             await upsert_usage_record(db, {
                 "provider":           rec.provider,
                 "model":              rec.model,
@@ -63,7 +71,7 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
                 "cache_read_tokens":  rec.cache_read_tokens,
                 "real_tokens":        rec.real_tokens,
                 "request_count":      rec.request_count,
-                "estimated_cost_usd": rec.estimated_cost_usd,
+                "estimated_cost_usd": cost,
                 "synced_at":          synced_at,
             })
         await insert_sync_log(db, provider_name, "ok", f"{len(records)} records upserted", synced_at)

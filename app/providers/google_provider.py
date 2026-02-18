@@ -1,11 +1,25 @@
 """
 Google Gemini provider — parses token usage from OpenClaw session JSONL files.
 
-API endpoint : None available as of 2026-02.
+API endpoint : None available.
                Google does not expose a Gemini-specific usage API.
 Auth         : GEMINI_API_KEY (used only for is_configured detection)
 Method       : Session JSONL parsing via app/log_parser.py
 Model prefix : "gemini-"
+
+⚠ WHY GEMINI USAGE IS NOT CAPTURED:
+  OpenClaw uses Gemini exclusively in heartbeat calls. Heartbeat calls do NOT
+  create session JSONL files — only interactive sessions and sub-agent runs do.
+  Since this dashboard sources all data from session JSONL files, Gemini usage
+  is effectively invisible. The provider is configured but produces zero records.
+  This is a fundamental limitation of the log-based approach: if a model is only
+  used in contexts that do not produce JSONL files, it cannot be tracked.
+
+  To track Gemini in the future, one of the following approaches would be needed:
+    a) OpenClaw starts writing heartbeat usage to a separate log file.
+    b) Google exposes a Gemini usage API (Google Cloud Billing API covers spend
+       but not per-model token counts at this time).
+    c) A sidecar proxy intercepts Gemini API calls and logs them independently.
 
 TODO — Google Cloud Billing API (future):
   If a Gemini-specific usage API becomes available:
