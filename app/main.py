@@ -25,8 +25,9 @@ from fastapi.templating import Jinja2Templates
 
 from .database import init_db
 from .scheduler import start_scheduler, sync_all
-from .routers.usage_router import router as usage_router, pricing_router
+from .routers.usage_router import router as usage_router
 from .routers.provider_router import router as provider_router
+from .routers.pricing_router import router as pricing_router
 
 load_dotenv()
 

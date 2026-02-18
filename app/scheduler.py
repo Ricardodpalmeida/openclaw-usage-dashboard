@@ -7,8 +7,9 @@ Schedule:
 
 Each sync run:
   1. Calls provider.fetch_usage(start_date, end_date)
-  2. Upserts returned records into usage_records table
-  3. Logs outcome to sync_log table
+  2. Fetches current pricing from model_pricing DB table
+  3. Upserts returned records into usage_records table
+  4. Logs outcome to sync_log table
 """
 
 import logging
@@ -17,7 +18,7 @@ from datetime import date, timedelta, timezone, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .database import get_db, upsert_usage_record, insert_sync_log
+from .database import get_db, upsert_usage_record, insert_sync_log, get_all_pricing
 from .pricing import estimate_cost
 from .providers import ALL_PROVIDERS
 
@@ -53,10 +54,14 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
         return {"status": "error", "message": msg}
 
     async with get_db() as db:
+        # Fetch current pricing from DB once for all records
+        pricing_rows = {row["model"]: dict(row) for row in await get_all_pricing(db)}
+
         for rec in records:
-            # Recalculate cost using hard-coded pricing (session files store cost=0)
+            pricing_row = pricing_rows.get(rec.model, {})
             cost = estimate_cost(
                 rec.model,
+                pricing_row,
                 rec.input_tokens,
                 rec.output_tokens,
                 rec.cache_read_tokens,

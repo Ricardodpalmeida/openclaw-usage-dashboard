@@ -6,7 +6,6 @@ GET /api/usage/weekly            — daily totals for a given week (Mon–Sun)
 GET /api/usage/weekly-by-model   — daily totals per model for a given week
 GET /api/usage/hourly            — per-hour breakdown for a given date
 GET /api/usage/by-model          — breakdown per model, sorted by real_tokens desc
-GET /api/pricing                 — hard-coded provider pricing table
 """
 
 from datetime import date, timedelta
@@ -19,7 +18,6 @@ from ..models import (
     UsageSummary, UsageByModel, WeeklyUsage, HourlyBreakdown,
     DailyUsage, HourlyUsage,
 )
-from ..pricing import PRICING
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
@@ -276,25 +274,4 @@ async def get_weekly_by_model(
     }
 
 
-# ── Pricing endpoint (outside /api/usage prefix, registered at app level) ──
-# This endpoint is registered directly on the router with a full path prefix override.
-# It's appended here for co-location but note the prefix is /api/usage — so the
-# actual pricing endpoint is at /api/usage/pricing-info. A top-level /api/pricing
-# is registered separately in main.py or via a dedicated router.
-
-pricing_router = APIRouter(tags=["pricing"])
-
-
-@pricing_router.get("/api/pricing")
-async def get_pricing():
-    """Return hard-coded API pricing per model (per million tokens).
-
-    Source: official provider pricing pages, Feb 2026.
-    These values are used to estimate costs since session files store cost=0.
-    """
-    return {
-        "source": "hard-coded",
-        "last_updated": "Feb 2026",
-        "unit": "USD per million tokens",
-        "models": PRICING,
-    }
+# (Pricing endpoints moved to routers/pricing_router.py)

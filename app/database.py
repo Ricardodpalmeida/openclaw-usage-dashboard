@@ -7,11 +7,15 @@ Database file is stored at /app/data/usage.db inside the container, or
 Schema is applied on startup via init_db(). The usage_records table is
 dropped and recreated on each startup to ensure schema consistency — data
 is re-synced from session files on startup.
+
+The model_pricing table persists across restarts and is seeded with defaults
+only when empty (user edits are preserved).
 """
 
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -20,6 +24,15 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(os.getenv("DB_PATH", "/app/data/usage.db"))
+
+SEED_PRICING = [
+    ("claude-opus-4-6",        "Claude Opus 4.6",  15.00, 75.00,  1.50,   18.75),
+    ("claude-sonnet-4-6",      "Claude Sonnet 4.6",  3.00, 15.00,  0.30,    3.75),
+    ("kimi-k2.5",              "Kimi K2.5",          0.60,  3.00,  0.15,    0.60),
+    ("kimi-k2-thinking",       "Kimi K2 Thinking",   0.60,  3.00,  0.15,    0.60),
+    ("gemini-3-flash-preview", "Gemini 3 Flash",     0.10,  0.40,  0.025,   0.10),
+    ("gemini-3-pro-preview",   "Gemini 3 Pro",       1.25,  5.00,  0.3125,  1.25),
+]
 
 
 @asynccontextmanager
@@ -30,11 +43,29 @@ async def get_db() -> AsyncGenerator[aiosqlite.Connection, None]:
         yield db
 
 
+async def seed_default_pricing(db: aiosqlite.Connection) -> None:
+    """Insert default pricing rows only if the model_pricing table is empty."""
+    row = await (await db.execute("SELECT COUNT(*) AS cnt FROM model_pricing")).fetchone()
+    if row["cnt"] > 0:
+        return  # User has already customised pricing — don't overwrite
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await db.executemany(
+        """
+        INSERT OR IGNORE INTO model_pricing
+            (model, display_name, input_per_m, output_per_m, cache_read_per_m, cache_write_per_m, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [(m, dn, inp, out, cr, cw, now) for m, dn, inp, out, cr, cw in SEED_PRICING],
+    )
+
+
 async def init_db() -> None:
     """Drop and recreate usage_records table, create auxiliary tables if needed."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         await db.executescript("""
             DROP TABLE IF EXISTS usage_records;
 
@@ -63,12 +94,23 @@ async def init_db() -> None:
                 synced_at   TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS model_pricing (
+                model              TEXT PRIMARY KEY,
+                display_name       TEXT,
+                input_per_m        REAL DEFAULT 0.0,
+                output_per_m       REAL DEFAULT 0.0,
+                cache_read_per_m   REAL DEFAULT 0.0,
+                cache_write_per_m  REAL DEFAULT 0.0,
+                updated_at         TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_date
                 ON usage_records(date);
 
             CREATE INDEX IF NOT EXISTS idx_usage_provider
                 ON usage_records(provider);
         """)
+        await seed_default_pricing(db)
         await db.commit()
 
     logger.info("Database ready at %s", DB_PATH)
@@ -101,3 +143,38 @@ async def insert_sync_log(db: aiosqlite.Connection, provider: str, status: str, 
         "INSERT INTO sync_log (provider, status, message, synced_at) VALUES (?, ?, ?, ?)",
         (provider, status, message, synced_at),
     )
+
+
+async def get_all_pricing(db: aiosqlite.Connection) -> list:
+    """Return all model_pricing rows ordered by model name."""
+    rows = await (await db.execute(
+        "SELECT * FROM model_pricing ORDER BY model ASC"
+    )).fetchall()
+    return rows
+
+
+async def upsert_pricing(
+    db: aiosqlite.Connection,
+    model: str,
+    display_name: str,
+    input_per_m: float,
+    output_per_m: float,
+    cache_read_per_m: float,
+    cache_write_per_m: float,
+) -> None:
+    """Insert or replace a model pricing row."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    await db.execute(
+        """
+        INSERT OR REPLACE INTO model_pricing
+            (model, display_name, input_per_m, output_per_m, cache_read_per_m, cache_write_per_m, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (model, display_name, input_per_m, output_per_m, cache_read_per_m, cache_write_per_m, now),
+    )
+
+
+async def delete_pricing(db: aiosqlite.Connection, model: str) -> int:
+    """Delete a model pricing row. Returns number of rows deleted."""
+    cursor = await db.execute("DELETE FROM model_pricing WHERE model = ?", (model,))
+    return cursor.rowcount

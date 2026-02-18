@@ -227,6 +227,87 @@
     .provider-name   { font-size: 13px; font-weight: 500; }
     .provider-method { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
+    /* ── Pricing Config Panel ───────────────────────────────────────────── */
+    .pricing-toggle-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .pricing-toggle-btn:hover { background: var(--bg-hover); }
+    .pricing-config-body {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height .4s ease;
+    }
+    .pricing-config-body.open { max-height: 3000px; }
+    .pricing-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      width: 80px;
+    }
+    .pricing-input:focus { outline: none; border-color: var(--accent); }
+    .pricing-save-btn {
+      background: rgba(88,166,255,.15);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .pricing-save-btn:hover { background: rgba(88,166,255,.25); }
+    .pricing-save-ok {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+      display: none;
+    }
+    .add-model-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      padding: 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .add-model-form label { font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
+    .add-model-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 13px;
+      width: 140px;
+    }
+    .add-model-input.narrow { width: 90px; }
+    .add-model-input:focus { outline: none; border-color: var(--accent); }
+    .add-model-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 4px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .add-model-btn:hover { opacity: .85; }
+
     /* ── Toast ───────────────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -348,6 +429,63 @@
   <section>
     <h2>Provider Status</h2>
     <div class="provider-grid" id="provider-grid">Loading…</div>
+  </section>
+
+  <!-- Pricing Config (collapsed by default) -->
+  <section>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <h2 style="margin-bottom:0">⚙ Pricing Config</h2>
+      <button class="pricing-toggle-btn" onclick="togglePricingPanel()">
+        <span id="pricing-toggle-icon">▼</span> Edit Prices
+      </button>
+    </div>
+    <div class="pricing-config-body" id="pricing-config-body">
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Model ID</th>
+              <th>Display Name</th>
+              <th>Input $/M</th>
+              <th>Output $/M</th>
+              <th>Cache Read $/M</th>
+              <th>Cache Write $/M</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pricing-table-body">
+            <tr><td colspan="7" class="text" style="color:var(--text-dim);padding:20px">Click "Edit Prices" to expand.</td></tr>
+          </tbody>
+        </table>
+        <div class="add-model-form">
+          <div>
+            <label>Model ID</label>
+            <input type="text" class="add-model-input" id="add-model-id" placeholder="e.g. gpt-4o" />
+          </div>
+          <div>
+            <label>Display Name</label>
+            <input type="text" class="add-model-input" id="add-model-name" placeholder="e.g. GPT-4o" />
+          </div>
+          <div>
+            <label>Input $/M</label>
+            <input type="number" class="add-model-input narrow" id="add-model-inp" step="0.001" min="0" value="0" />
+          </div>
+          <div>
+            <label>Output $/M</label>
+            <input type="number" class="add-model-input narrow" id="add-model-out" step="0.001" min="0" value="0" />
+          </div>
+          <div>
+            <label>Cache Read $/M</label>
+            <input type="number" class="add-model-input narrow" id="add-model-cr" step="0.001" min="0" value="0" />
+          </div>
+          <div>
+            <label>Cache Write $/M</label>
+            <input type="number" class="add-model-input narrow" id="add-model-cw" step="0.001" min="0" value="0" />
+          </div>
+          <button class="add-model-btn" onclick="addModel()">+ Add Model</button>
+        </div>
+      </div>
+    </div>
   </section>
 
 </main>
@@ -653,6 +791,99 @@ async function loadAll() {
 }
 
 loadAll();
+
+/* ── Pricing Config Panel ───────────────────────────────────────────────── */
+let pricingPanelOpen = false;
+
+function togglePricingPanel() {
+  pricingPanelOpen = !pricingPanelOpen;
+  const body = document.getElementById('pricing-config-body');
+  const icon = document.getElementById('pricing-toggle-icon');
+  body.classList.toggle('open', pricingPanelOpen);
+  icon.textContent = pricingPanelOpen ? '▲' : '▼';
+  if (pricingPanelOpen) loadPricingTable();
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function loadPricingTable() {
+  const data = await fetch('/api/pricing').then(r => r.json());
+  const tbody = document.getElementById('pricing-table-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text" style="color:var(--text-dim);padding:20px">No pricing configured.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(p => {
+    const esc = CSS.escape(p.model);
+    return `
+    <tr id="price-row-${esc}">
+      <td class="text" style="max-width:160px;word-break:break-all">${escHtml(p.model)}</td>
+      <td><input type="text" class="pricing-input" style="width:140px" id="pr-name-${esc}" value="${escHtml(p.display_name || p.model)}" /></td>
+      <td><input type="number" class="pricing-input" step="0.001" min="0" id="pr-inp-${esc}" value="${p.input_per_m}" /></td>
+      <td><input type="number" class="pricing-input" step="0.001" min="0" id="pr-out-${esc}" value="${p.output_per_m}" /></td>
+      <td><input type="number" class="pricing-input" step="0.001" min="0" id="pr-cr-${esc}" value="${p.cache_read_per_m}" /></td>
+      <td><input type="number" class="pricing-input" step="0.001" min="0" id="pr-cw-${esc}" value="${p.cache_write_per_m}" /></td>
+      <td style="white-space:nowrap">
+        <button class="pricing-save-btn" onclick="savePricing(${JSON.stringify(p.model)})">Save</button>
+        <span class="pricing-save-ok" id="pr-ok-${esc}">✓ Saved</span>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function savePricing(model) {
+  const esc = CSS.escape(model);
+  const displayName = document.getElementById(`pr-name-${esc}`)?.value || model;
+  const inp = parseFloat(document.getElementById(`pr-inp-${esc}`)?.value || 0);
+  const out = parseFloat(document.getElementById(`pr-out-${esc}`)?.value || 0);
+  const cr  = parseFloat(document.getElementById(`pr-cr-${esc}`)?.value  || 0);
+  const cw  = parseFloat(document.getElementById(`pr-cw-${esc}`)?.value  || 0);
+  try {
+    await fetch(`/api/pricing/${encodeURIComponent(model)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: displayName, input_per_m: inp, output_per_m: out, cache_read_per_m: cr, cache_write_per_m: cw }),
+    });
+    const okEl = document.getElementById(`pr-ok-${esc}`);
+    if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
+    await Promise.all([loadSummary(), loadModelTable()]);
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'err');
+  }
+}
+
+async function addModel() {
+  const model = document.getElementById('add-model-id').value.trim();
+  const displayName = document.getElementById('add-model-name').value.trim() || model;
+  const inp = parseFloat(document.getElementById('add-model-inp').value || 0);
+  const out = parseFloat(document.getElementById('add-model-out').value || 0);
+  const cr  = parseFloat(document.getElementById('add-model-cr').value  || 0);
+  const cw  = parseFloat(document.getElementById('add-model-cw').value  || 0);
+  if (!model) { showToast('Model ID is required', 'err'); return; }
+  try {
+    const r = await fetch(`/api/pricing/${encodeURIComponent(model)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: displayName, input_per_m: inp, output_per_m: out, cache_read_per_m: cr, cache_write_per_m: cw }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    // Clear form
+    document.getElementById('add-model-id').value = '';
+    document.getElementById('add-model-name').value = '';
+    ['add-model-inp','add-model-out','add-model-cr','add-model-cw'].forEach(id => { document.getElementById(id).value = 0; });
+    showToast('Model added ✓', 'ok');
+    await loadPricingTable();
+    await Promise.all([loadSummary(), loadModelTable()]);
+  } catch (e) {
+    showToast('Add failed: ' + e.message, 'err');
+  }
+}
 </script>
 </body>
 </html>
