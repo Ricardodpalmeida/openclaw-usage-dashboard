@@ -86,8 +86,7 @@ async def seed_default_settings(db: aiosqlite.Connection) -> None:
     """Seed default settings if they don't already exist."""
     defaults = [
         ("session_cost_warning_usd", "5.0"),
-        ("alert_whatsapp_enabled", "false"),
-        ("alert_whatsapp_to", "+351910298749"),
+        ("alert_telegram_enabled", "false"),
         ("alert_last_session_id", ""),
     ]
     for key, value in defaults:

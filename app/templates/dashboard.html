@@ -683,21 +683,17 @@
           <span class="alert-save-ok" id="alert-save-ok">✓ Saved</span>
         </div>
 
-        <!-- WhatsApp Alert Settings -->
+        <!-- Telegram Alert Settings -->
         <div class="whatsapp-settings-block">
           <div class="whatsapp-row">
-            <span class="alert-settings-label">💬 WhatsApp alerts:</span>
-            <input type="checkbox" class="whatsapp-toggle" id="wa-enabled" onchange="saveWhatsAppSettings()" />
-            <span class="alert-settings-label" id="wa-enabled-label">Disabled</span>
+            <span class="alert-settings-label">✈️ Telegram alerts:</span>
+            <input type="checkbox" class="whatsapp-toggle" id="tg-enabled" onchange="saveTelegramSettings()" />
+            <span class="alert-settings-label" id="tg-enabled-label">Disabled</span>
           </div>
           <div class="whatsapp-row">
-            <span class="alert-settings-label">Send to:</span>
-            <input type="text" class="whatsapp-text-input" id="wa-to" placeholder="+351910298749" style="max-width:200px;" />
-          </div>
-          <div class="whatsapp-row">
-            <button class="alert-save-btn" onclick="saveWhatsAppSettings()">Save</button>
-            <button class="alert-test-btn" onclick="testWhatsAppAlert()">🔔 Test Alert</button>
-            <span class="alert-save-ok" id="wa-save-ok">✓ Saved</span>
+            <button class="alert-save-btn" onclick="saveTelegramSettings()">Save</button>
+            <button class="alert-test-btn" onclick="testTelegramAlert()">🔔 Test Alert</button>
+            <span class="alert-save-ok" id="tg-save-ok">✓ Saved</span>
           </div>
         </div>
       </div>
@@ -1169,43 +1165,36 @@ async function loadAlertThreshold() {
     if (threshold !== undefined) {
       document.getElementById('alert-threshold').value = parseFloat(threshold).toFixed(2);
     }
-    // Load WhatsApp settings
-    const enabled = data.alert_whatsapp_enabled === 'true';
-    const waToggle = document.getElementById('wa-enabled');
-    const waLabel  = document.getElementById('wa-enabled-label');
-    if (waToggle) {
-      waToggle.checked = enabled;
-      waLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    // Load Telegram settings
+    const enabled = data.alert_telegram_enabled === 'true';
+    const tgToggle = document.getElementById('tg-enabled');
+    const tgLabel  = document.getElementById('tg-enabled-label');
+    if (tgToggle) {
+      tgToggle.checked = enabled;
+      tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
     }
-    const waTo = data.alert_whatsapp_to || '';
-    const waToInput = document.getElementById('wa-to');
-    if (waToInput && waTo) waToInput.value = waTo;
   } catch (_) {}
 }
 
-async function saveWhatsAppSettings() {
-  const enabled = document.getElementById('wa-enabled').checked;
-  const to      = document.getElementById('wa-to').value.trim();
-  const waLabel = document.getElementById('wa-enabled-label');
-
-  const payload = { alert_whatsapp_enabled: enabled ? 'true' : 'false' };
-  if (to) payload.alert_whatsapp_to = to;
+async function saveTelegramSettings() {
+  const enabled = document.getElementById('tg-enabled').checked;
+  const tgLabel = document.getElementById('tg-enabled-label');
 
   try {
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ alert_telegram_enabled: enabled ? 'true' : 'false' }),
     });
-    waLabel.textContent = enabled ? 'Enabled' : 'Disabled';
-    const okEl = document.getElementById('wa-save-ok');
+    tgLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+    const okEl = document.getElementById('tg-save-ok');
     if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
   } catch (e) {
     showToast('Save failed: ' + e.message, 'err');
   }
 }
 
-async function testWhatsAppAlert() {
+async function testTelegramAlert() {
   try {
     const r = await fetch('/api/alerts/test', { method: 'POST' });
     const data = await r.json();
