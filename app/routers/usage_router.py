@@ -29,7 +29,7 @@ async def get_summary():
     date_30d = _date_n_days_ago(30)
     date_7d = _date_n_days_ago(7)
 
-    async with await get_db() as db:
+    async with get_db() as db:
         # All-time totals
         row = await (await db.execute(
             "SELECT SUM(total_tokens) as tt, SUM(request_count) as rc FROM usage_records"
@@ -66,7 +66,7 @@ async def get_summary():
 @router.get("/by-model", response_model=List[UsageByModel])
 async def get_by_model():
     """Return per-model breakdown sorted by total token volume (descending)."""
-    async with await get_db() as db:
+    async with get_db() as db:
         rows = await (await db.execute("""
             SELECT
                 provider,
@@ -100,7 +100,7 @@ async def get_timeline():
     """Return daily aggregate totals for the last 30 days."""
     date_30d = _date_n_days_ago(30)
 
-    async with await get_db() as db:
+    async with get_db() as db:
         rows = await (await db.execute("""
             SELECT
                 date,
@@ -131,7 +131,7 @@ async def get_by_provider():
     """Return totals aggregated per provider."""
     provider_map = {p.name: p.display_name for p in ALL_PROVIDERS}
 
-    async with await get_db() as db:
+    async with get_db() as db:
         rows = await (await db.execute("""
             SELECT
                 provider,

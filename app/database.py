@@ -10,7 +10,9 @@ at this scale — schema changes require a manual DB reset or ALTER TABLE.
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
 
 import aiosqlite
 
@@ -19,11 +21,12 @@ logger = logging.getLogger(__name__)
 DB_PATH = Path(os.getenv("DB_PATH", "/app/data/usage.db"))
 
 
-async def get_db() -> aiosqlite.Connection:
-    """Return an open aiosqlite connection with row_factory set."""
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    return db
+@asynccontextmanager
+async def get_db() -> AsyncGenerator[aiosqlite.Connection, None]:
+    """Async context manager for a database connection. Use as: async with get_db() as db."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        yield db
 
 
 async def init_db() -> None:

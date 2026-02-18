@@ -46,12 +46,12 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
     except Exception as exc:
         msg = f"{provider.display_name}: fetch failed — {exc}"
         logger.error(msg)
-        async with await get_db() as db:
+        async with get_db() as db:
             await insert_sync_log(db, provider_name, "error", str(exc)[:500], synced_at)
             await db.commit()
         return {"status": "error", "message": msg}
 
-    async with await get_db() as db:
+    async with get_db() as db:
         for rec in records:
             await upsert_usage_record(db, {
                 "provider":           rec.provider,

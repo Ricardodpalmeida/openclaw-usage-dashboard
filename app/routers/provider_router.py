@@ -48,7 +48,7 @@ async def trigger_sync():
 @router.get("/api/sync/log", response_model=List[SyncLogEntry])
 async def get_sync_log():
     """Return the last 20 sync events."""
-    async with await get_db() as db:
+    async with get_db() as db:
         rows = await (await db.execute(
             "SELECT id, provider, status, message, synced_at "
             "FROM sync_log ORDER BY id DESC LIMIT 20"
