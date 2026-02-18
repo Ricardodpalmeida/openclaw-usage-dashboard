@@ -7,11 +7,11 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY}
-      - OPENCLAW_LOG_PATH=/openclaw-logs/openclaw.log
+      - OPENCLAW_SESSIONS_PATH=/openclaw-sessions
       - SYNC_INTERVAL_HOURS=6
     volumes:
-      - ./data:/app/data                      # SQLite DB persistence
-      - ~/.openclaw/logs:/openclaw-logs:ro    # Read-only log access
+      - ./data:/app/data                                           # SQLite DB persistence
+      - /home/ric/.openclaw/agents/main/sessions:/openclaw-sessions:ro  # Read-only session access
     ports:
       - "8001:8000"
     networks:
@@ -20,3 +20,26 @@ services:
 networks:
   pacheco-net:
     external: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Integration with pacheco-lab
+# ─────────────────────────────────────────────────────────────────────────────
+# This is a standalone stack. It connects to pacheco-net so Caddy can route
+# to it without being part of the main docker-compose.yml.
+#
+# Caddyfile entry (/opt/pacheco-lab/Caddyfile):
+#   http://usage.ricbits.cc {
+#       reverse_proxy openclaw-usage:8000
+#   }
+#
+# Cloudflare Zero Trust → Networks → Connectors → pacheco-lab → Public Hostnames:
+#   usage.ricbits.cc → http://caddy:80
+#
+# Cloudflare Access: add usage.ricbits.cc to the existing policy.
+#
+# Deploy:
+#   cd /home/ric/projects/20260218_OpenClaw_Usage
+#   cp .env.example .env   # fill in keys from ~/.openclaw/.env
+#   docker compose up -d
+#   # then reload Caddy in the pacheco-lab stack:
+#   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
