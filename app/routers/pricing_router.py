@@ -7,15 +7,19 @@ DELETE /api/pricing/{model}      — remove a model's pricing entry
 
 After a PUT, all usage_records for the affected model have their
 estimated_cost_usd recomputed using the new pricing.
+
+Settings endpoints:
+GET    /api/settings             — return all settings as {key: value}
+POST   /api/settings             — update one or more settings keys
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..database import get_db, get_all_pricing, upsert_pricing, delete_pricing
+from ..database import get_db, get_all_pricing, upsert_pricing, delete_pricing, get_all_settings, set_setting
 from ..pricing import estimate_cost
 
 logger = logging.getLogger(__name__)
@@ -107,3 +111,25 @@ async def remove_pricing(model: str):
         raise HTTPException(status_code=404, detail=f"Model '{model}' not found in pricing table")
 
     return {"model": model, "deleted": True}
+
+
+# ── Settings router ─────────────────────────────────────────────────────────
+
+settings_router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+@settings_router.get("")
+async def get_settings():
+    """Return all application settings as a {key: value} dict."""
+    async with get_db() as db:
+        return await get_all_settings(db)
+
+
+@settings_router.post("")
+async def update_settings(body: Dict[str, Any]):
+    """Update one or more settings keys. Accepts a JSON object of {key: value} pairs."""
+    async with get_db() as db:
+        for key, value in body.items():
+            await set_setting(db, key, str(value))
+        await db.commit()
+    return {"updated": list(body.keys())}

@@ -6,20 +6,112 @@ GET /api/usage/weekly            — daily totals for a given week (Mon–Sun)
 GET /api/usage/weekly-by-model   — daily totals per model for a given week
 GET /api/usage/hourly            — per-hour breakdown for a given date
 GET /api/usage/by-model          — breakdown per model, sorted by real_tokens desc
+GET /api/session/current         — live stats for the currently active session
 """
 
-from datetime import date, timedelta
+import os
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Query
 
-from ..database import get_db
+from ..database import get_db, get_all_pricing, get_setting
+from ..log_parser import parse_single_session
 from ..models import (
     UsageSummary, UsageByModel, WeeklyUsage, HourlyBreakdown,
     DailyUsage, HourlyUsage,
 )
+from ..pricing import estimate_cost
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
+session_router = APIRouter(prefix="/api/session", tags=["session"])
+
+_DEFAULT_SESSIONS_PATH = "~/.openclaw/agents/main/sessions"
+
+
+def _sessions_path() -> Path:
+    raw = os.getenv("OPENCLAW_SESSIONS_PATH", _DEFAULT_SESSIONS_PATH)
+    return Path(raw).expanduser().resolve()
+
+
+def _find_active_session() -> Path | None:
+    """Return the active session JSONL path, identified by a corresponding .lock file."""
+    sp = _sessions_path()
+    if not sp.exists():
+        return None
+    for lock in sp.glob("*.jsonl.lock"):
+        candidate = sp / lock.name.removesuffix(".lock")
+        if candidate.exists():
+            return candidate
+    return None
+
+
+@session_router.get("/current")
+async def get_current_session():
+    """Return live cost and token stats for the currently active session."""
+    active = _find_active_session()
+    if active is None:
+        return {"status": "no_active_session"}
+
+    session_id = active.stem  # UUID part of filename
+    parsed = parse_single_session(active)
+
+    async with get_db() as db:
+        pricing_rows = await get_all_pricing(db)
+        threshold_str = await get_setting(db, "session_cost_warning_usd", "5.0")
+
+    threshold = float(threshold_str)
+    pricing_map = {r["model"]: dict(r) for r in pricing_rows}
+
+    # Aggregate across models
+    total_input = total_output = total_cache_read = total_cache_write = 0
+    total_cost = 0.0
+    models_used = []
+
+    for model, bucket in parsed["by_model"].items():
+        models_used.append(model)
+        total_input       += bucket["input_tokens"]
+        total_output      += bucket["output_tokens"]
+        total_cache_read  += bucket["cache_read_tokens"]
+        total_cache_write += bucket["cache_write_tokens"]
+        pr = pricing_map.get(model)
+        if pr:
+            total_cost += estimate_cost(
+                model, pr,
+                bucket["input_tokens"],
+                bucket["output_tokens"],
+                bucket["cache_read_tokens"],
+                bucket["cache_write_tokens"],
+            )
+
+    # Duration
+    started_at = parsed.get("started_at")
+    duration_minutes = 0
+    if started_at:
+        try:
+            dt_start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            duration_minutes = int(
+                (datetime.now(timezone.utc) - dt_start).total_seconds() / 60
+            )
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "message_count": parsed["message_count"],
+        "models_used": models_used,
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "cache_read_tokens": total_cache_read,
+        "cache_write_tokens": total_cache_write,
+        "estimated_cost_usd": round(total_cost, 4),
+        "started_at": started_at,
+        "duration_minutes": duration_minutes,
+        "warning": total_cost >= threshold,
+        "warning_threshold_usd": threshold,
+    }
 
 
 def _date_n_days_ago(n: int) -> str:

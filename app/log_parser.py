@@ -216,3 +216,88 @@ def parse_sessions(
         )
 
     return result
+
+
+def parse_single_session(file_path: Path) -> Dict:
+    """
+    Parse a single session JSONL file and return per-model token totals.
+
+    Returns a dict keyed by model name, each value containing aggregated token
+    counts and the session start time (earliest timestamp in the file).
+
+    Return format:
+        {
+            "started_at": "2026-02-18T11:00:00+00:00",
+            "message_count": 42,
+            "by_model": {
+                "claude-sonnet-4-6": {
+                    "provider": "anthropic",
+                    "input_tokens": 1200,
+                    "output_tokens": 55000,
+                    "cache_read_tokens": 8200000,
+                    "cache_write_tokens": 1900000,
+                    "request_count": 42,
+                }
+            }
+        }
+    """
+    result: Dict[str, Dict] = {}
+    started_at: str | None = None
+    message_count = 0
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Track earliest timestamp as session start
+                ts = record.get("timestamp", "")
+                if ts and (started_at is None or ts < started_at):
+                    started_at = ts
+
+                if record.get("type") != "message":
+                    continue
+                msg = record.get("message", {})
+                if msg.get("role") != "assistant":
+                    continue
+
+                message_count += 1
+
+                usage = msg.get("usage")
+                if not usage:
+                    continue
+
+                provider = msg.get("provider", "unknown")
+                model = msg.get("model", "unknown")
+
+                if model not in result:
+                    result[model] = {
+                        "provider": provider,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "cache_read_tokens": 0,
+                        "cache_write_tokens": 0,
+                        "request_count": 0,
+                    }
+
+                bucket = result[model]
+                bucket["input_tokens"]       += usage.get("input", 0)
+                bucket["output_tokens"]      += usage.get("output", 0)
+                bucket["cache_read_tokens"]  += usage.get("cacheRead", 0)
+                bucket["cache_write_tokens"] += usage.get("cacheWrite", 0)
+                bucket["request_count"]      += 1
+
+    except Exception as exc:
+        logger.warning("Failed to parse session file %s: %s", file_path, exc)
+
+    return {
+        "started_at": started_at,
+        "message_count": message_count,
+        "by_model": result,
+    }

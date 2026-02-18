@@ -308,6 +308,128 @@
     }
     .add-model-btn:hover { opacity: .85; }
 
+    /* ── Current Session Widget ──────────────────────────────────────────── */
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 22px;
+    }
+    .session-card.warning {
+      border-color: var(--orange);
+      box-shadow: 0 0 0 1px rgba(227,179,65,.3);
+    }
+    .session-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .session-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .session-started {
+      font-size: 12px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+    }
+    .session-row {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .session-row .sep { color: var(--border); margin: 0 6px; }
+    .session-cost { color: var(--accent); font-weight: 700; }
+    .session-cost.warn { color: var(--orange); }
+    .session-tokens { color: var(--text-dim); font-size: 12px; }
+    .session-progress-wrap {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .session-progress-bar {
+      flex: 1;
+      min-width: 120px;
+      height: 8px;
+      background: var(--bg);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .session-progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .4s ease;
+      background: var(--green);
+    }
+    .session-progress-fill.warn { background: var(--orange); }
+    .session-progress-fill.over { background: var(--red); }
+    .session-progress-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .session-warning-badge {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--orange);
+      display: none;
+    }
+    .session-inactive {
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 6px 0;
+    }
+
+    /* ── Alert Settings ──────────────────────────────────────────────────── */
+    .alert-settings-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .alert-settings-label { font-size: 12px; color: var(--text-dim); }
+    .alert-threshold-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 13px;
+      width: 90px;
+    }
+    .alert-threshold-input:focus { outline: none; border-color: var(--accent); }
+    .alert-save-btn {
+      background: rgba(88,166,255,.15);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .alert-save-btn:hover { background: rgba(88,166,255,.25); }
+    .alert-save-ok {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 600;
+      display: none;
+    }
+
     /* ── Toast ───────────────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -341,6 +463,14 @@
 </header>
 
 <main>
+
+  <!-- Current Session Monitor -->
+  <section id="current-session-section">
+    <h2>⚡ Current Session</h2>
+    <div class="session-card" id="session-card">
+      <div class="session-inactive" id="session-loading">Loading…</div>
+    </div>
+  </section>
 
   <!-- Summary Cards -->
   <section>
@@ -483,6 +613,15 @@
             <input type="number" class="add-model-input narrow" id="add-model-cw" step="0.001" min="0" value="0" />
           </div>
           <button class="add-model-btn" onclick="addModel()">+ Add Model</button>
+        </div>
+
+        <!-- Alert Settings -->
+        <div class="alert-settings-row">
+          <span class="alert-settings-label">🔔 Session cost warning threshold:</span>
+          <input type="number" class="alert-threshold-input" id="alert-threshold" step="0.5" min="0" value="5.00" />
+          <span class="alert-settings-label">USD</span>
+          <button class="alert-save-btn" onclick="saveAlertThreshold()">Save</button>
+          <span class="alert-save-ok" id="alert-save-ok">✓ Saved</span>
         </div>
       </div>
     </div>
@@ -782,11 +921,13 @@ function showToast(msg, type = 'ok') {
 async function loadAll() {
   currentWeekOffset = 0;
   await Promise.all([
+    loadCurrentSession(),
     loadSummary(),
     loadWeekly(0),
     loadModelTable(),
     loadProviders(),
     loadSyncLog(),
+    loadAlertThreshold(),
   ]);
 }
 
@@ -856,6 +997,102 @@ async function savePricing(model) {
   } catch (e) {
     showToast('Save failed: ' + e.message, 'err');
   }
+}
+
+/* ── Current Session Widget ─────────────────────────────────────────────── */
+function fmtDuration(minutes) {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+async function loadCurrentSession() {
+  const card = document.getElementById('session-card');
+  try {
+    const data = await fetch('/api/session/current').then(r => r.json());
+
+    if (data.status === 'no_active_session') {
+      card.classList.remove('warning');
+      card.innerHTML = '<div class="session-inactive">No active session detected.</div>';
+      return;
+    }
+
+    const warning = data.warning;
+    card.classList.toggle('warning', warning);
+
+    const threshold = data.warning_threshold_usd || 5.0;
+    const cost = data.estimated_cost_usd || 0;
+    const ratio = threshold > 0 ? Math.min(cost / threshold, 2) : 0;  // cap at 2×
+    const pct = Math.min(ratio * 100, 100);
+    const fillClass = cost >= threshold ? 'over' : (pct > 70 ? 'warn' : '');
+    const costClass = warning ? 'session-cost warn' : 'session-cost';
+
+    const models = (data.models_used || []).join(', ') || '—';
+    const dur = fmtDuration(data.duration_minutes || 0);
+
+    card.innerHTML = `
+      <div class="session-header">
+        <div class="session-title">
+          Session <span style="color:var(--text-dim);font-size:12px;font-weight:400;font-family:var(--mono)">${data.session_id}</span>
+        </div>
+        <div class="session-started">started ${dur} ago</div>
+      </div>
+      <div class="session-row">
+        <span>${fmtK(data.message_count)} messages</span>
+        <span class="sep">|</span>
+        <span>${escHtml(models)}</span>
+        <span class="sep">|</span>
+        Est. cost: <span class="${costClass}">${fmtCost(cost)}</span>
+        ${warning ? '<span class="session-warning-badge" style="display:inline">⚠️ Over threshold</span>' : ''}
+      </div>
+      <div class="session-tokens">
+        In: ${fmtK(data.input_tokens)}&nbsp;&nbsp;
+        Out: ${fmtK(data.output_tokens)}&nbsp;&nbsp;
+        Cache Read: ${fmtK(data.cache_read_tokens)}&nbsp;&nbsp;
+        Cache Write: ${fmtK(data.cache_write_tokens)}
+      </div>
+      <div class="session-progress-wrap">
+        <div class="session-progress-bar">
+          <div class="session-progress-fill ${fillClass}" style="width:${pct.toFixed(1)}%"></div>
+        </div>
+        <span class="session-progress-label">${fmtCost(cost)} / ${fmtCost(threshold)} threshold</span>
+      </div>`;
+  } catch (e) {
+    card.innerHTML = `<div class="session-inactive" style="color:var(--red)">Error loading session: ${e.message}</div>`;
+  }
+}
+
+// Auto-refresh every 60 seconds
+setInterval(loadCurrentSession, 60_000);
+
+/* ── Alert Threshold Save ───────────────────────────────────────────────── */
+async function saveAlertThreshold() {
+  const val = parseFloat(document.getElementById('alert-threshold').value);
+  if (isNaN(val) || val < 0) { showToast('Invalid threshold value', 'err'); return; }
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_cost_warning_usd: val }),
+    });
+    const okEl = document.getElementById('alert-save-ok');
+    if (okEl) { okEl.style.display = 'inline'; setTimeout(() => { okEl.style.display = 'none'; }, 2500); }
+    // Re-render the session widget with the new threshold
+    await loadCurrentSession();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'err');
+  }
+}
+
+async function loadAlertThreshold() {
+  try {
+    const data = await fetch('/api/settings').then(r => r.json());
+    const threshold = data.session_cost_warning_usd;
+    if (threshold !== undefined) {
+      document.getElementById('alert-threshold').value = parseFloat(threshold).toFixed(2);
+    }
+  } catch (_) {}
 }
 
 async function addModel() {

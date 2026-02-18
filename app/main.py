@@ -25,9 +25,9 @@ from fastapi.templating import Jinja2Templates
 
 from .database import init_db
 from .scheduler import start_scheduler, sync_all
-from .routers.usage_router import router as usage_router
+from .routers.usage_router import router as usage_router, session_router
 from .routers.provider_router import router as provider_router
-from .routers.pricing_router import router as pricing_router
+from .routers.pricing_router import router as pricing_router, settings_router
 
 load_dotenv()
 
@@ -64,8 +64,10 @@ async def on_shutdown():
 
 
 app.include_router(usage_router)
+app.include_router(session_router)
 app.include_router(provider_router)
 app.include_router(pricing_router)
+app.include_router(settings_router)
 
 
 @app.get("/", response_class=HTMLResponse)

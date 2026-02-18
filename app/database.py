@@ -60,6 +60,36 @@ async def seed_default_pricing(db: aiosqlite.Connection) -> None:
     )
 
 
+async def get_setting(db: aiosqlite.Connection, key: str, default: str = "") -> str:
+    """Return the value for a settings key, or default if not found."""
+    row = await (await db.execute(
+        "SELECT value FROM settings WHERE key = ?", (key,)
+    )).fetchone()
+    return row["value"] if row else default
+
+
+async def set_setting(db: aiosqlite.Connection, key: str, value: str) -> None:
+    """Insert or replace a settings key/value pair."""
+    await db.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        (key, value),
+    )
+
+
+async def get_all_settings(db: aiosqlite.Connection) -> dict:
+    """Return all settings as a {key: value} dict."""
+    rows = await (await db.execute("SELECT key, value FROM settings")).fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+async def seed_default_settings(db: aiosqlite.Connection) -> None:
+    """Seed default settings if they don't already exist."""
+    await db.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        ("session_cost_warning_usd", "5.0"),
+    )
+
+
 async def init_db() -> None:
     """Drop and recreate usage_records table, create auxiliary tables if needed."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +134,11 @@ async def init_db() -> None:
                 updated_at         TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_date
                 ON usage_records(date);
 
@@ -111,6 +146,7 @@ async def init_db() -> None:
                 ON usage_records(provider);
         """)
         await seed_default_pricing(db)
+        await seed_default_settings(db)
         await db.commit()
 
     logger.info("Database ready at %s", DB_PATH)
