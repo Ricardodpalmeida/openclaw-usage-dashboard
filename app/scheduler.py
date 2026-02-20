@@ -18,7 +18,7 @@ from datetime import date, timedelta, timezone, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .database import get_db, upsert_usage_record, insert_sync_log, get_all_pricing
+from .database import get_db, upsert_usage_record, upsert_tool_call, insert_sync_log, get_all_pricing
 from .pricing import estimate_cost
 from .providers import ALL_PROVIDERS
 from .alerting import check_and_alert
@@ -55,33 +55,45 @@ async def sync_provider(provider_name: str, start_date: str, end_date: str) -> d
         return {"status": "error", "message": msg}
 
     async with get_db() as db:
-        # Fetch current pricing from DB once for all records
-        pricing_rows = {row["model"]: dict(row) for row in await get_all_pricing(db)}
+        if provider.name == "tools":
+            # Tool calls use separate table
+            for rec in records:
+                await upsert_tool_call(db, {
+                    "provider":    rec.provider,
+                    "tool_name":   rec.model,  # model field stores tool_name for tools
+                    "date":        rec.date,
+                    "hour":        rec.hour,
+                    "call_count":  rec.request_count,
+                    "synced_at":   synced_at,
+                })
+        else:
+            # Model usage records with pricing
+            pricing_rows = {row["model"]: dict(row) for row in await get_all_pricing(db)}
 
-        for rec in records:
-            pricing_row = pricing_rows.get(rec.model, {})
-            cost = estimate_cost(
-                rec.model,
-                pricing_row,
-                rec.input_tokens,
-                rec.output_tokens,
-                rec.cache_read_tokens,
-                rec.cache_write_tokens,
-            )
-            await upsert_usage_record(db, {
-                "provider":            rec.provider,
-                "model":               rec.model,
-                "date":                rec.date,
-                "hour":                rec.hour,
-                "input_tokens":        rec.input_tokens,
-                "output_tokens":       rec.output_tokens,
-                "cache_read_tokens":   rec.cache_read_tokens,
-                "cache_write_tokens":  rec.cache_write_tokens,
-                "real_tokens":         rec.real_tokens,
-                "request_count":       rec.request_count,
-                "estimated_cost_usd":  cost,
-                "synced_at":           synced_at,
-            })
+            for rec in records:
+                pricing_row = pricing_rows.get(rec.model, {})
+                cost = estimate_cost(
+                    rec.model,
+                    pricing_row,
+                    rec.input_tokens,
+                    rec.output_tokens,
+                    rec.cache_read_tokens,
+                    rec.cache_write_tokens,
+                )
+                await upsert_usage_record(db, {
+                    "provider":            rec.provider,
+                    "model":               rec.model,
+                    "date":                rec.date,
+                    "hour":                rec.hour,
+                    "input_tokens":        rec.input_tokens,
+                    "output_tokens":       rec.output_tokens,
+                    "cache_read_tokens":   rec.cache_read_tokens,
+                    "cache_write_tokens":  rec.cache_write_tokens,
+                    "real_tokens":         rec.real_tokens,
+                    "request_count":       rec.request_count,
+                    "estimated_cost_usd":  cost,
+                    "synced_at":           synced_at,
+                })
         await insert_sync_log(db, provider_name, "ok", f"{len(records)} records upserted", synced_at)
         await db.commit()
 

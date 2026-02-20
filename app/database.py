@@ -151,6 +151,23 @@ async def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_usage_provider
                 ON usage_records(provider);
+
+            CREATE TABLE IF NOT EXISTS tool_calls (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider         TEXT NOT NULL,      -- e.g., 'brave', 'google', 'browser'
+                tool_name        TEXT NOT NULL,      -- e.g., 'web_search', 'browser', 'exec'
+                date             TEXT NOT NULL,      -- YYYY-MM-DD
+                hour             INTEGER NOT NULL DEFAULT 0,  -- 0-23 UTC
+                call_count       INTEGER DEFAULT 0,
+                synced_at        TEXT NOT NULL,
+                UNIQUE(provider, tool_name, date, hour)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_date
+                ON tool_calls(date);
+
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_provider
+                ON tool_calls(provider);
         """)
         await seed_default_pricing(db)
         await seed_default_settings(db)
@@ -221,3 +238,45 @@ async def delete_pricing(db: aiosqlite.Connection, model: str) -> int:
     """Delete a model pricing row. Returns number of rows deleted."""
     cursor = await db.execute("DELETE FROM model_pricing WHERE model = ?", (model,))
     return cursor.rowcount
+
+
+async def upsert_tool_call(db: aiosqlite.Connection, record: dict) -> None:
+    """Insert or update a tool call record (conflict on provider+tool_name+date+hour)."""
+    await db.execute("""
+        INSERT INTO tool_calls
+            (provider, tool_name, date, hour, call_count, synced_at)
+        VALUES
+            (:provider, :tool_name, :date, :hour, :call_count, :synced_at)
+        ON CONFLICT(provider, tool_name, date, hour) DO UPDATE SET
+            call_count    = excluded.call_count,
+            synced_at     = excluded.synced_at
+    """, record)
+
+
+async def get_tool_call_summary(db: aiosqlite.Connection, days: int = 30) -> list:
+    """Return aggregated tool call summary for the last N days."""
+    rows = await (await db.execute("""
+        SELECT 
+            provider,
+            tool_name,
+            SUM(call_count) as total_calls
+        FROM tool_calls
+        WHERE date >= date('now', '-{} days')
+        GROUP BY provider, tool_name
+        ORDER BY total_calls DESC
+    """.format(days))).fetchall()
+    return rows
+
+
+async def get_tool_calls_by_day(db: aiosqlite.Connection, days: int = 30) -> list:
+    """Return daily tool call counts for the last N days."""
+    rows = await (await db.execute("""
+        SELECT 
+            date,
+            SUM(call_count) as daily_calls
+        FROM tool_calls
+        WHERE date >= date('now', '-{} days')
+        GROUP BY date
+        ORDER BY date ASC
+    """.format(days))).fetchall()
+    return rows

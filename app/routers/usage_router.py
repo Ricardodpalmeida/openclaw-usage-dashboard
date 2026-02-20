@@ -16,7 +16,7 @@ from typing import List
 
 from fastapi import APIRouter, Query, Response
 
-from ..database import get_db, get_all_pricing, get_setting
+from ..database import get_db, get_all_pricing, get_setting, get_tool_call_summary, get_tool_calls_by_day
 from ..log_parser import parse_single_session
 from ..models import (
     UsageSummary, UsageByModel, WeeklyUsage, HourlyBreakdown,
@@ -382,3 +382,41 @@ async def get_weekly_by_model(
 
 
 # (Pricing endpoints moved to routers/pricing_router.py)
+
+
+# ── Tool Calls Endpoints ────────────────────────────────────────────────────
+
+@router.get("/tools/summary")
+async def get_tools_summary(days: int = Query(default=30, ge=1, le=365)):
+    """Return aggregated tool call summary for the last N days."""
+    async with get_db() as db:
+        rows = await get_tool_call_summary(db, days)
+
+    # Aggregate by provider
+    by_provider = {}
+    total_calls = 0
+    for r in rows:
+        provider = r["provider"]
+        count = int(r["total_calls"] or 0)
+        total_calls += count
+        if provider not in by_provider:
+            by_provider[provider] = {"calls": 0, "tools": {}}
+        by_provider[provider]["calls"] += count
+        by_provider[provider]["tools"][r["tool_name"]] = count
+
+    return {
+        "total_calls": total_calls,
+        "days": days,
+        "by_provider": by_provider,
+    }
+
+
+@router.get("/tools/timeline")
+async def get_tools_timeline(days: int = Query(default=30, ge=1, le=365)):
+    """Return daily tool call counts for the last N days."""
+    async with get_db() as db:
+        rows = await get_tool_calls_by_day(db, days)
+
+    return {
+        "days": [{"date": r["date"], "calls": int(r["daily_calls"] or 0)} for r in rows],
+    }

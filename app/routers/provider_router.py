@@ -22,15 +22,19 @@ router = APIRouter(tags=["providers"])
 @router.get("/api/providers", response_model=List[ProviderStatus])
 async def list_providers():
     """Return all registered providers with their configuration status."""
-    return [
-        ProviderStatus(
+    result = []
+    for p in ALL_PROVIDERS:
+        if p.name == "tools":
+            method = "Session parser (~/.openclaw/agents/main/sessions/*.jsonl)"
+        else:
+            method = "Log parser (~/.openclaw/logs/openclaw.log)"
+        result.append(ProviderStatus(
             name=p.name,
             display_name=p.display_name,
             is_configured=p.is_configured(),
-            method="Log parser (~/.openclaw/logs/openclaw.log)",
-        )
-        for p in ALL_PROVIDERS
-    ]
+            method=method,
+        ))
+    return result
 
 
 @router.post("/api/sync", response_model=SyncResult)

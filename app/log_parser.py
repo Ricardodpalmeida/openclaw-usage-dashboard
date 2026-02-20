@@ -301,3 +301,131 @@ def parse_single_session(file_path: Path) -> Dict:
         "message_count": message_count,
         "by_model": result,
     }
+
+
+# Tool name mapping for aggregation
+TOOL_MAPPING = {
+    "web_search": "brave",
+    "web_fetch": "brave",
+    "browser": "browser",
+    "exec": "system",
+    "read": "system",
+    "write": "system",
+    "edit": "system",
+    "image": "image",
+    "sessions_spawn": "orchestration",
+    "sessions_send": "orchestration",
+    "subagents": "orchestration",
+    "memory_search": "memory",
+    "memory_get": "memory",
+}
+
+
+def parse_tool_calls(
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> List[Dict]:
+    """
+    Parse all session JSONL files and return aggregated tool call records.
+
+    Tool calls are identified by messages with type "toolCall".
+    We aggregate by (provider, tool_name, date, hour).
+
+    Args:
+        start_date: Optional ISO date string YYYY-MM-DD (inclusive).
+        end_date:   Optional ISO date string YYYY-MM-DD (inclusive).
+
+    Returns:
+        List of dicts with keys: provider, tool_name, date, hour, call_count.
+    """
+    sessions_path = _get_sessions_path()
+
+    if not sessions_path.exists():
+        logger.warning("Sessions path does not exist: %s", sessions_path)
+        return []
+
+    # Collect all session file variants
+    session_files = []
+    for pattern in ["*.jsonl", "*.jsonl.deleted.*", "*.jsonl.reset.*"]:
+        session_files.extend(sessions_path.glob(pattern))
+    session_files = [f for f in session_files if not f.name.endswith(".lock")]
+
+    if not session_files:
+        logger.info("No session files found in %s", sessions_path)
+        return []
+
+    # Accumulator: (provider, tool_name, date, hour) -> count
+    ToolKey = Tuple[str, str, str, int]
+    agg: Dict[ToolKey, int] = defaultdict(int)
+
+    files_parsed = 0
+    calls_found = 0
+
+    for session_file in session_files:
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    # Look for toolCall messages
+                    if record.get("type") != "message":
+                        continue
+                    msg = record.get("message", {})
+                    content = msg.get("content", [])
+                    if not isinstance(content, list):
+                        continue
+
+                    # Find toolCall items in content
+                    for item in content:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") != "toolCall":
+                            continue
+
+                        tool_name = item.get("name", "unknown")
+                        timestamp = record.get("timestamp", "")
+                        date, hour = _parse_date_hour(timestamp)
+
+                        # Filter by date range
+                        if start_date and date < start_date:
+                            continue
+                        if end_date and date > end_date:
+                            continue
+
+                        # Map tool to provider category
+                        provider = TOOL_MAPPING.get(tool_name, "other")
+
+                        key: ToolKey = (provider, tool_name, date, hour)
+                        agg[key] += 1
+                        calls_found += 1
+
+            files_parsed += 1
+        except Exception as exc:
+            logger.warning("Failed to parse session file %s: %s", session_file, exc)
+
+    logger.info(
+        "Parsed %d session files, found %d tool calls across %d buckets",
+        files_parsed,
+        calls_found,
+        len(agg),
+    )
+
+    result = []
+    for (provider, tool_name, date, hour), count in sorted(agg.items()):
+        result.append(
+            {
+                "provider": provider,
+                "tool_name": tool_name,
+                "date": date,
+                "hour": hour,
+                "call_count": count,
+            }
+        )
+
+    return result

@@ -203,6 +203,8 @@
       font-size: 11px;
       font-weight: 600;
       font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .badge-cfg      { background: rgba(88,166,255,.12); color: var(--accent); }
     .badge-nocfg    { background: rgba(139,148,158,.12); color: var(--text-dim); }
@@ -223,9 +225,42 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
-    .provider-name   { font-size: 13px; font-weight: 500; }
-    .provider-method { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .provider-card > div:first-child {
+      min-width: 0;
+      flex: 1;
+    }
+    .provider-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .provider-method {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Mobile adjustments */
+    @media (max-width: 480px) {
+      .provider-grid {
+        grid-template-columns: 1fr;
+      }
+      .provider-card {
+        padding: 12px;
+      }
+      .badge {
+        font-size: 10px;
+        padding: 2px 6px;
+      }
+    }
 
     /* ── Pricing Config Panel ───────────────────────────────────────────── */
     .pricing-toggle-btn {
@@ -621,6 +656,39 @@
     <div class="provider-grid" id="provider-grid">Loading…</div>
   </section>
 
+  <!-- Tool Calls Summary -->
+  <section>
+    <h2>Tool Calls — Last 30 Days</h2>
+    <div class="cards" id="tool-calls-cards">
+      <div class="card">
+        <div class="card-label">Total Tool Calls</div>
+        <div class="card-value" id="c-tool-total">—</div>
+        <div class="card-sub">All tools tracked</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Brave Search</div>
+        <div class="card-value" id="c-tool-brave">—</div>
+        <div class="card-sub">web_search + web_fetch</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Browser</div>
+        <div class="card-value" id="c-tool-browser">—</div>
+        <div class="card-sub">browser automation</div>
+      </div>
+      <div class="card">
+        <div class="card-label">System Tools</div>
+        <div class="card-value" id="c-tool-system">—</div>
+        <div class="card-sub">exec, read, write, edit</div>
+      </div>
+    </div>
+    <div class="chart-card" style="margin-top:14px;">
+      <div class="chart-header">
+        <div class="chart-title">Daily Tool Calls</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-tools"></canvas></div>
+    </div>
+  </section>
+
   <!-- Pricing Config (collapsed by default) -->
   <section>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
@@ -944,16 +1012,23 @@ async function loadModelTable() {
 async function loadProviders() {
   const data = await fetch('/api/providers').then(r => r.json());
   const grid = document.getElementById('provider-grid');
+  // Check if mobile for shorter labels
+  const isMobile = window.innerWidth <= 480;
   grid.innerHTML = data.map(p => {
-    const isGemini = p.name === 'google';
-    const badge = isGemini
-      ? `<div style="text-align:right">
-           <span class="badge badge-nocapture">Not captured</span>
-           <div class="provider-note">Gemini is used for heartbeats only — heartbeat calls are not recorded in session files.</div>
-         </div>`
-      : `<span class="badge ${p.is_configured ? 'badge-cfg' : 'badge-nocfg'}">
-           ${p.is_configured ? 'Configured' : 'Not configured'}
-         </span>`;
+    const isTools = p.name === 'tools';
+    let badgeText;
+    let badgeClass;
+    if (isTools) {
+      badgeText = 'Active';
+      badgeClass = 'badge-cfg';
+    } else if (p.is_configured) {
+      badgeText = isMobile ? 'OK' : 'Configured';
+      badgeClass = 'badge-cfg';
+    } else {
+      badgeText = isMobile ? 'Missing' : 'Not configured';
+      badgeClass = 'badge-nocfg';
+    }
+    const badge = `<span class="badge ${badgeClass}">${badgeText}</span>`;
     return `
     <div class="provider-card">
       <div>
@@ -999,6 +1074,58 @@ function showToast(msg, type = 'ok') {
   toastTimer = setTimeout(() => { el.className = ''; }, 4000);
 }
 
+/* ── Tool Calls ─────────────────────────────────────────────────────────── */
+let chartTools = null;
+
+async function loadToolCalls() {
+  try {
+    const [summary, timeline] = await Promise.all([
+      fetch('/api/usage/tools/summary').then(r => r.json()),
+      fetch('/api/usage/tools/timeline').then(r => r.json()),
+    ]);
+
+    // Update summary cards
+    document.getElementById('c-tool-total').textContent   = fmtK(summary.total_calls);
+    document.getElementById('c-tool-brave').textContent   = fmtK(summary.by_provider.brave?.calls || 0);
+    document.getElementById('c-tool-browser').textContent = fmtK(summary.by_provider.browser?.calls || 0);
+    document.getElementById('c-tool-system').textContent  = fmtK(summary.by_provider.system?.calls || 0);
+
+    // Build timeline chart
+    const labels = timeline.days.map(d => dayLabel(d.date));
+    const values = timeline.days.map(d => d.calls);
+
+    if (chartTools) chartTools.destroy();
+    chartTools = new Chart(document.getElementById('chart-tools'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Tool Calls',
+          data: values,
+          backgroundColor: 'rgba(88,166,255,.2)',
+          borderColor: '#58a6ff',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#58a6ff',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 11 } } },
+          y: { ticks: { callback: v => fmtK(v) }, beginAtZero: true }
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Failed to load tool calls:', e);
+  }
+}
+
 /* ── Boot ───────────────────────────────────────────────────────────────── */
 async function loadAll() {
   currentWeekOffset = 0;
@@ -1010,6 +1137,7 @@ async function loadAll() {
     loadProviders(),
     loadSyncLog(),
     loadAlertThreshold(),
+    loadToolCalls(),
   ]);
 }
 

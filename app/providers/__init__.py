@@ -10,11 +10,13 @@ To add a new provider:
 from .anthropic_provider import AnthropicProvider
 from .google_provider import GoogleProvider
 from .moonshot_provider import MoonshotProvider
+from .tool_provider import ToolProvider
 
 ALL_PROVIDERS = [
     AnthropicProvider(),
     GoogleProvider(),
     MoonshotProvider(),
+    ToolProvider(),
 ]
 
 __all__ = ["ALL_PROVIDERS"]
